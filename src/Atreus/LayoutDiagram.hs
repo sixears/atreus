@@ -40,11 +40,12 @@ import Diagrams.Core.Transform  ( transform )
 import Diagrams.Angle             ( Angle, (@@), deg, rotation )
 import Diagrams.Attributes        ( lw, none )
 import Diagrams.TwoD.Align        ( alignBL, alignBR, alignTL, alignTR
-                                  , centerXY, snugL, snugR )
+                                  , centerXY, snugL, snugR, snugX )
 import Diagrams.TwoD.Attributes   ( fc )
 import Diagrams.TwoD.Combinators  ( hsep, vsep )
 import Diagrams.TwoD.Path         ( strokeP )
 import Diagrams.TwoD.Shapes       ( roundedRect )
+import Diagrams.TwoD.Transform    ( translationY )
 import Diagrams.TwoD.Types        ( V2( V2 ) )
 import Diagrams.Util              ( (#) )
 
@@ -140,10 +141,24 @@ col0 = [ ("Q",   "!", "Ins"  , "", "' \"")
        ]
 
 col1 ∷ [(𝕊,𝕊,𝕊,𝕊,𝕊)]
-col1 = [ ("W",   "@"   , "Home"  , "", "' \"")
-       , ("S",   "←"   , ""  , "", "a A")
-       , ("X",   "]"   , "Vol+"     , "", "; :")
-       , ("Tab", "Ins" , "Vol-", "",  "")
+col1 = [ ("W",   "@"   , "Home"  , "", "")
+       , ("S",   "←"   , ""      , "", "")
+       , ("X",   "]"   , "Vol+"  , "", "")
+       , ("Tab", "Ins" , "Vol-"  , "", "")
+       ]
+
+col2 ∷ [(𝕊,𝕊,𝕊,𝕊,𝕊)]
+col2 = [ ("E",   "↑" , ""  , "", "")
+       , ("D",   "↓" , ""  , "", "")
+       , ("C",   "#" , ""  , "", "")
+       , ("Cmd", ""  , ""  , "", "")
+       ]
+
+col3 ∷ [(𝕊,𝕊,𝕊,𝕊,𝕊)]
+col3 = [ ("R"    , "$" , "End"  , "", "")
+       , ("F"    , "→" , ""     , "", "")
+       , ("V"    , "{" , ""     , "", "")
+       , ("Shift", ""  , ""     , "", "")
        ]
 
 atreus_layout ∷ IO (Diagram B)
@@ -153,8 +168,14 @@ atreus_layout = do
 --    ks ← mapM (key_rot (-10@@deg)) layout
     ks0 ← mapM key col0
     ks1 ← mapM key col1
-    return $ vsep 0.1 ks0 # transform (rotation (-10@@deg)) # snugR
-           <> vsep 0.1 ks1 # transform (rotation (-10@@deg)) # snugL
-
+    ks2 ← mapM key col2
+    ks3 ← mapM key col3
+    return $ mconcat [ vsep 0.1 ks0 # transform (rotation (-10@@deg)) # snugX 1.2
+                     , vsep 0.1 ks1 # transform (rotation (-10@@deg)) # snugX (-1.2)
+                     , vsep 0.1 ks2 # transform (rotation (-10@@deg)) # snugX (-3.6)
+                     , vsep 0.1 ks3 # transform (rotation (-10@@deg)) # snugX (-6.0) # transform (translationY 1)
+                     -- , vsep 0.1 ks1 # transform (rotation (-10@@deg)) # snugL
+                     ]
+          
    
 -- that's all, folks! ----------------------------------------------------------
