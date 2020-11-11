@@ -59,8 +59,9 @@ library
   -- other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:     base, base-unicode-symbols, colour, diagrams-core
-                   , diagrams-lib, diagrams-svg, mtl, SVGFonts
+  build-depends:     base, base-unicode-symbols, colour, data-default
+                   , diagrams-core, diagrams-lib, diagrams-svg, lens
+                   , mono-traversable, mtl, safe, SVGFonts
 
   -- Directories containing source files.
   hs-source-dirs:      src
