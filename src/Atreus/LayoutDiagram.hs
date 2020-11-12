@@ -146,9 +146,71 @@ instance MonoFoldable (Key,Key,Key,Key) where
 
 --------------------------------------------------------------------------------
 
+leftLayer0 ∷ [[𝕄 𝕊]]
+leftLayer0 = [ (Just `fmap` [ "Q",   "W",   "E",   "R",     "T" ] ⊕ [Nothing])
+             , (Just `fmap` [ "A",   "S",   "D",   "F",     "G" ] ⊕ [Nothing])
+             , (Just `fmap` [ "Z",   "X",   "C",   "V",     "B",    "~" ])
+             , (Just `fmap` [ "Esc", "Tab", "Cmd", "Shift", "BkSp", "Ctrl" ])
+             ]
+
+--------------------
+
+leftLayer1 ∷ [[𝕄 𝕊]]
+leftLayer1 = [ (Just `fmap` [ "!", "@"  , "↑", "$",     "T" ] ⊕ [Nothing])
+             , (Just `fmap` [ "(", "←"  , "↓", "→",     "G" ] ⊕ [Nothing])
+             , (Just `fmap` [ "[", "]"  , "#", "{",     "B",    "~" ])
+             , (Just `fmap` [ "" , "Ins", "" , "" , "BkSp", "Ctrl" ])
+             ]
+
+--------------------
+
+leftLayer2 ∷ [[𝕄 𝕊]]
+leftLayer2 = [ (Just `fmap` [ "Ins"  , "Home", "", "End", "T" ] ⊕ [Nothing])
+             , (Just `fmap` [ "Del"  , ""    , "", ""   , "G" ] ⊕ [Nothing])
+             , (Just `fmap` [ ""     , "Vol+", "", ""   , "B",    "~" ])
+             , (Just `fmap` [ "Upper", "Vol-", "", ""   , "BkSp", "Ctrl" ])
+             ]
+
+--------------------
+
+leftLayer3 ∷ [[𝕄 𝕊]]
+leftLayer3 = [ (Just `fmap` [ "Ins"  , "Home", "", "End", "T" ] ⊕ [Nothing])
+             , (Just `fmap` [ "Del"  , ""    , "", ""   , "G" ] ⊕ [Nothing])
+             , (Just `fmap` [ ""     , "Vol+", "", ""   , "B",    "~" ])
+             , (Just `fmap` [ "Upper", "Vol-", "", ""   , "BkSp", "Ctrl" ])
+             ]
+
+--------------------
+
+leftLayer4 ∷ [[𝕄 𝕊]]
+leftLayer4 = [ (Just `fmap` [ "Ins"  , "Home", "", "End", "T" ] ⊕ [Nothing])
+             , (Just `fmap` [ "Del"  , ""    , "", ""   , "G" ] ⊕ [Nothing])
+             , (Just `fmap` [ ""     , "Vol+", "", ""   , "B",    "~" ])
+             , (Just `fmap` [ "Upper", "Vol-", "", ""   , "BkSp", "Ctrl" ])
+             ]
+
+{- | LHS Keyboard, all layers -}
+leftBoard ∷ [[Key]]
+leftBoard =
+  zipWith5 (zipWith5 Key) leftLayer0 leftLayer1 leftLayer2 leftLayer3 leftLayer4
+
+leftColumns ∷ [(Key,Key,Key,Key)]
+leftColumns = let [r0,r1,r2,r3] = fmap ZipList leftBoard
+                in toList $ (,,,) <$> r0 <*> r1 <*> r2 <*> r3
+
+------------------------------------------------------------
+
 {- | A width-one square with slightly rounded corners. -}
 box1 ∷ Diagram B
 box1 = roundedRect 1 1 0.05
+
+----------------------------------------
+
+{- | Like `vsep`, but going upwards rather than downwards. -}
+
+vsup ∷ (Floating (N δ), Juxtaposable δ, Monoid δ, HasOrigin δ, V δ ~ V2) ⇒      
+       N δ -> [δ] -> δ
+vsup s = cat' (V2 0 1) (def & sep .~ s)
 
 ----------------------------------------
 
@@ -182,83 +244,30 @@ text' h  t c x y a = do
 
 ----------------------------------------
 
-key' ∷ MonadIO μ ⇒ Key → μ (Diagram B)
-key' (Key a b c d e) = key ((fromMaybe "" a),(fromMaybe "" b),(fromMaybe "" c),(fromMaybe "" d),(fromMaybe "" e))
-
 {- | Create a diagram for a key with the given labels. -}
-key ∷ MonadIO μ ⇒ (𝕊,𝕊,𝕊,𝕊,𝕊) → μ (Diagram B)
-key (c,tl,tr,bl,br) = liftIO $ do
+key ∷ MonadIO μ ⇒ Key → μ (Diagram B)
+key (Key c tl tr bl br) = liftIO $ do
   fonts ← getFonts
   flip runReaderT fonts $ do
-    t0' ← text' 0.5  c  grey    0       0     centerXY
-    t1' ← text' 0.35 tr red   (-0.45) (-0.45) alignTR
-    t2' ← text' 0.35 br blue  (-0.45)   0.45  alignBR
-    t3' ← text' 0.35 tl green   0.45  (-0.45) alignTL
-    t4' ← text' 0.35 bl yellow  0.45    0.45  alignBL
+    t0 ← text' 0.5  (fromMaybe "" c)  grey    0       0     centerXY
+    t1 ← text' 0.35 (fromMaybe "" tr) red   (-0.45) (-0.45) alignTR
+    t2 ← text' 0.35 (fromMaybe "" br) blue  (-0.45)   0.45  alignBR
+    t3 ← text' 0.35 (fromMaybe "" tl) green   0.45  (-0.45) alignTL
+    t4 ← text' 0.35 (fromMaybe "" bl) yellow  0.45    0.45  alignBL
 
-    return $ mconcat [ box1 , t0', t1', t2', t3', t4' ] # withEnvelope (square 1 ∷ D V2 𝔻)
-
-leftBoard0 ∷ [[𝕄 𝕊]]
-leftBoard0 = [ (Just `fmap` [ "Q",   "W",   "E",   "R",     "T" ] ⊕ [Nothing])
-             , (Just `fmap` [ "A",   "S",   "D",   "F",     "G" ] ⊕ [Nothing])
-             , (Just `fmap` [ "Z",   "X",   "C",   "V",     "B",    "~" ])
-             , (Just `fmap` [ "Esc", "Tab", "Cmd", "Shift", "BkSp", "Ctrl" ])
-             ]
-
-leftBoard1 ∷ [[𝕄 𝕊]]
-leftBoard1 = [ (Just `fmap` [ "!", "@"  , "↑", "$",     "T" ] ⊕ [Nothing])
-             , (Just `fmap` [ "(", "←"  , "↓", "→",     "G" ] ⊕ [Nothing])
-             , (Just `fmap` [ "[", "]"  , "#", "{",     "B",    "~" ])
-             , (Just `fmap` [ "" , "Ins", "" , "" , "BkSp", "Ctrl" ])
-             ]
-
-leftBoard2 ∷ [[𝕄 𝕊]]
-leftBoard2 = [ (Just `fmap` [ "Ins"  , "Home", "", "End", "T" ] ⊕ [Nothing])
-             , (Just `fmap` [ "Del"  , ""    , "", ""   , "G" ] ⊕ [Nothing])
-             , (Just `fmap` [ ""     , "Vol+", "", ""   , "B",    "~" ])
-             , (Just `fmap` [ "Upper", "Vol-", "", ""   , "BkSp", "Ctrl" ])
-             ]
-
-leftBoard3 ∷ [[𝕄 𝕊]]
-leftBoard3 = [ (Just `fmap` [ "Ins"  , "Home", "", "End", "T" ] ⊕ [Nothing])
-             , (Just `fmap` [ "Del"  , ""    , "", ""   , "G" ] ⊕ [Nothing])
-             , (Just `fmap` [ ""     , "Vol+", "", ""   , "B",    "~" ])
-             , (Just `fmap` [ "Upper", "Vol-", "", ""   , "BkSp", "Ctrl" ])
-             ]
-
-leftBoard4 ∷ [[𝕄 𝕊]]
-leftBoard4 = [ (Just `fmap` [ "Ins"  , "Home", "", "End", "T" ] ⊕ [Nothing])
-             , (Just `fmap` [ "Del"  , ""    , "", ""   , "G" ] ⊕ [Nothing])
-             , (Just `fmap` [ ""     , "Vol+", "", ""   , "B",    "~" ])
-             , (Just `fmap` [ "Upper", "Vol-", "", ""   , "BkSp", "Ctrl" ])
-             ]
-
-leftColumns' ∷ [(Key,Key,Key,Key)]
-leftColumns' = let [r0,r1,r2,r3] = fmap ZipList leftBoard''
-                in toList $ (,,,) <$> r0 <*> r1 <*> r2 <*> r3
-
-{- | LHS Keyboard, all layers -}
-leftBoard'' ∷ [[Key]]
-leftBoard'' =
-  zipWith5 (zipWith5 Key) leftBoard0 leftBoard1 leftBoard2 leftBoard3 leftBoard4
-
-c0,c1,c2,c3,c4,c5∷ (Key,Key,Key,Key)
-[c0,c1,c2,c3,c4,c5] = leftColumns'
-
-{- | Like `vsep`, but going upwards rather than downwards. -}
-
-vsup ∷ (Floating (N δ), Juxtaposable δ, Monoid δ, HasOrigin δ, V δ ~ V2) ⇒      
-       N δ -> [δ] -> δ
-vsup s = cat' (V2 0 1) (def & sep .~ s)
+    return $ mconcat [ box1 , t0, t1, t2, t3, t4 ]
+----------------------------------------
 
 keys ∷ (MonadIO μ, MonoFoldable φ, Element φ ~ Key) ⇒ φ → μ [Diagram B]
-keys = mapM key' ∘ filter (not ∘ all isNothing ∘ otoList) ∘ otoList
+keys = mapM key ∘ filter (not ∘ all isNothing ∘ otoList) ∘ otoList
+
+------------------------------------------------------------
 
 atreus_layout ∷ IO (Diagram B)
 atreus_layout = do
   fonts ← getFonts @𝔻
   flip runReaderT fonts $ do
-    [ks0,ks1,ks2,ks3,ks4,ks5] ← mapM keys [c0,c1,c2,c3,c4,c5]
+    [ks0,ks1,ks2,ks3,ks4,ks5] ← mapM keys leftColumns
 
     let rot = -10@@deg
 
