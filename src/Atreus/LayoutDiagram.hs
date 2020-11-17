@@ -1,7 +1,9 @@
-{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE DeriveGeneric             #-}
 {-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE LambdaCase                #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE NoImplicitPrelude         #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE UnicodeSyntax             #-}
@@ -10,34 +12,49 @@ module Atreus.LayoutDiagram
   ( atreus_layout )
 where
 
+import Control.Lens.Operators  ( (<&>) )
+import Control.Lens.Tuple
+
 --------------------------------------------------------------------------------
 
-import Prelude  ( Double, RealFloat )
+import Prelude  ( Double, RealFloat, fromIntegral )
+
+-- aeson -------------------------------
+
+import Data.Aeson  ( FromJSON, Value, eitherDecodeFileStrict' )
 
 -- base --------------------------------
 
 import Control.Applicative     ( ZipList( ZipList ), (<*>) )
-import Control.Monad           ( mapM, return )
+import Control.Monad           ( MonadFail, (>>=), join, mapM, return,sequence )
 import Control.Monad.IO.Class  ( MonadIO, liftIO )
 import Data.Bool               ( Bool( False ), not )
+import Data.Either             ( Either( Left, Right ) )
 import Data.Foldable           ( all, foldl', foldl1, foldMap, foldr, foldr1
-                               , toList )
+                               , length, toList )
 import Data.Function           ( ($), (&), flip )
 import Data.Functor            ( (<$>), fmap )
-import Data.List               ( filter, reverse, zipWith5 )
+import Data.List               ( drop, filter, repeat, replicate
+                               , reverse, splitAt, take, zipWith5 )
 import Data.Maybe              ( Maybe( Just, Nothing ), fromMaybe, isNothing )
 import Data.Monoid             ( Monoid, mconcat )
+import Data.Ord                ( (>) )
 import Data.String             ( String )
+import Data.Traversable        ( Traversable )
 import GHC.Float               ( Floating )
-import System.IO               ( IO )
+import GHC.Generics            ( Generic )
+import System.IO               ( FilePath, IO )
 import Text.Read               ( Read )
-import Text.Show               ( Show )
+import Text.Show               ( Show, show )
 
 -- base-unicode-symbols ----------------
 
 import Prelude.Unicode          ( (÷) )
+import Data.Eq.Unicode          ( (≡) )
+import Data.List.Unicode        ( (∈) )
 import Data.Function.Unicode    ( (∘) )
 import Data.Monoid.Unicode      ( (⊕) )
+import Numeric.Natural.Unicode  ( ℕ )
 
 -- colour ------------------------------
 
@@ -57,7 +74,7 @@ import Data.MonoTraversable  ( Element
 
 -- diagrams-core -----------------------
 
-import Diagrams.Core            ( D, Diagram )
+import Diagrams.Core            ( Diagram )
 import Diagrams.Core.HasOrigin  ( HasOrigin, moveOriginBy )
 import Diagrams.Core.Juxtapose  ( Juxtaposable )
 import Diagrams.Core.Transform  ( transform )
@@ -68,12 +85,11 @@ import Diagrams.Core.V          ( N, V )
 import Diagrams.Angle             ( (@@), deg, cosA, rotation )
 import Diagrams.Attributes        ( lw, none )
 import Diagrams.Combinators       ( CatMethod( Distrib ), cat', catMethod, sep )
-import Diagrams.Envelope          ( withEnvelope )
 import Diagrams.TwoD              ( showEnvelope, showOrigin )
 import Diagrams.TwoD.Align        ( alignBL, alignBR, alignTL, alignTR, centerXY )
 import Diagrams.TwoD.Attributes   ( fc )
 import Diagrams.TwoD.Path         ( strokeP )
-import Diagrams.TwoD.Shapes       ( roundedRect, square )
+import Diagrams.TwoD.Shapes       ( roundedRect )
 import Diagrams.TwoD.Transform    ( translationY )
 import Diagrams.TwoD.Types        ( V2( V2 ) )
 import Diagrams.Util              ( (#), with )
@@ -88,6 +104,7 @@ import Control.Lens.Setter  ( (.~) )
 
 -- mtl ---------------------------------
 
+import Control.Monad.Except  ( MonadError, throwError )
 import Control.Monad.Reader  ( MonadReader, asks, runReaderT )
 
 -- SVGFonts ----------------------------
@@ -132,6 +149,26 @@ instance MonoFoldable Key where
   ofoldr1Ex f = foldr1 f ∘ otoList
   ofoldl1Ex' f   = foldl1 f ∘ otoList
 
+instance Field1 Key Key (𝕄 𝕊) (𝕄 𝕊) where
+  _1 k (Key a b c d e) = k a <&> \ a' -> (Key a' b c d e)
+  {-# INLINE _1 #-}
+
+instance Field2 Key Key (𝕄 𝕊) (𝕄 𝕊) where
+  _2 k (Key a b c d e) = k b <&> \ b' -> (Key a b' c d e)
+  {-# INLINE _2 #-}
+
+instance Field3 Key Key (𝕄 𝕊) (𝕄 𝕊) where
+  _3 k (Key a b c d e) = k c <&> \ c' -> (Key a b c' d e)
+  {-# INLINE _3 #-}
+
+instance Field4 Key Key (𝕄 𝕊) (𝕄 𝕊) where
+  _4 k (Key a b c d e) = k d <&> \ d' -> (Key a b c d' e)
+  {-# INLINE _4 #-}
+
+instance Field5 Key Key (𝕄 𝕊) (𝕄 𝕊) where
+  _5 k (Key a b c d e) = k e <&> \ e' -> (Key a b c d e')
+  {-# INLINE _5 #-}
+  
 ----------------------------------------
 
 type instance Element (Key,Key,Key,Key) = Key
@@ -208,7 +245,7 @@ box1 = roundedRect 1 1 0.05
 
 {- | Like `vsep`, but going upwards rather than downwards. -}
 
-vsup ∷ (Floating (N δ), Juxtaposable δ, Monoid δ, HasOrigin δ, V δ ~ V2) ⇒      
+vsup ∷ (Floating (N δ), Juxtaposable δ, Monoid δ, HasOrigin δ, V δ ~ V2) ⇒
        N δ -> [δ] -> δ
 vsup s = cat' (V2 0 1) (def & sep .~ s)
 
@@ -270,14 +307,174 @@ atreus_layout = do
     [ks0,ks1,ks2,ks3,ks4,ks5] ← mapM keys leftColumns
 
     let rot = -10@@deg
+    let place ks y = vsup 0.1 (reverse ks) # transform (translationY y)
+                                           # transform (rotation rot)
+                                           -- # showOrigin
+                                           -- # showEnvelope
 
-    return $ cat' (V2 1 0) (with & catMethod .~ Distrib & sep .~ (1.2 ÷ cosA rot))
-             [ (cat' (V2 0 1) (with & sep .~ 0.1) (reverse ks0) # transform (rotation rot) # showOrigin # showEnvelope)
-             , (vsup 0.1 (reverse ks1) # transform (rotation rot) # showOrigin # showEnvelope)
-             , vsup 0.1 (reverse ks2) # transform (rotation rot)
-             , vsup 0.1 (reverse ks3) # transform (translationY (-0.5)) # transform (rotation rot) # showOrigin
-             , vsup 0.1 (reverse ks4) # transform (translationY (-1.0)) # transform (rotation rot) # showOrigin
-             , vsup 0.1 (reverse ks5) # transform (translationY (-1.0)) # transform (rotation rot) # showOrigin
-             ]
+    return $ cat' (V2 1 0)
+                  (with & catMethod .~ Distrib & sep .~ (1.2 ÷ cosA rot))
+                  [ place ks0 0
+                  , place ks1 0
+                  , place ks2 0
+                  , place ks3 (-0.5)
+                  , place ks4 (-1.0)
+                  , place ks5 (-1.0)
+                  ]
 
 -- that's all, folks! ----------------------------------------------------------
+
+data AtreusLayerKey = AtreusLayerKey { keyCode ∷ ℕ
+                                     , label   ∷ 𝕊
+                                     , verbose ∷ 𝕄 𝕊
+                                     , extraLabel ∷ 𝕄 𝕊
+                                     }
+  deriving (Generic, Show)
+
+instance FromJSON AtreusLayerKey
+
+{- | A non-key, as represented in an atreus layer -}
+atreusLayerNoKey ∷ AtreusLayerKey
+atreusLayerNoKey = AtreusLayerKey 0 "Blocked" (Just "Disabled") Nothing
+
+{- | A non-functioning-key, as represented in an atreus layer -}
+atreusLayerEmptyKey ∷ AtreusLayerKey
+atreusLayerEmptyKey = AtreusLayerKey 65535 "" (Just "Transparent") Nothing
+
+------------------------------------------------------------
+
+data AtreusLayer = AtreusLayer { keymap ∷ [AtreusLayerKey] }
+  deriving (Generic, Show)
+
+instance FromJSON AtreusLayer
+
+type instance Element AtreusLayer = AtreusLayerKey
+
+instance MonoFoldable AtreusLayer where
+  otoList (AtreusLayer ks) = ks
+  ofoldl' f x = foldl' f x ∘ otoList
+  ofoldr f x = foldr f x ∘ otoList
+  ofoldMap f = foldMap f ∘ otoList
+  ofoldr1Ex f = foldr1 f ∘ otoList
+  ofoldl1Ex' f   = foldl1 f ∘ otoList
+
+{- | An empty atreus layer -}
+atreusLayerEmpty ∷ AtreusLayer
+atreusLayerEmpty = AtreusLayer $ replicate 48 atreusLayerEmptyKey
+
+------------------------------------------------------------
+
+data ETooManyLayers = ETooManyLayers ℕ
+  deriving Show
+
+data AtreusBoard = AtreusBoard AtreusLayer AtreusLayer AtreusLayer
+                               AtreusLayer AtreusLayer
+  deriving Show
+
+boardFromLayers ∷ MonadError ETooManyLayers η ⇒ [AtreusLayer] → η AtreusBoard
+boardFromLayers ls =
+  if length ls > 5
+  then throwError $ ETooManyLayers (fromIntegral $ length ls)
+  else let [l0,l1,l2,l3,l4] = take 5 $ ls ⊕ repeat atreusLayerEmpty
+        in return $ AtreusBoard l0 l1 l2 l3 l4
+
+
+decode ∷ MonadIO μ ⇒ FilePath → μ (Either 𝕊 AtreusLayer)
+decode fn = liftIO $ eitherDecodeFileStrict' @AtreusLayer fn
+
+fns ∷ [FilePath]
+fns = fmap ("/home/martyn/rc/atreus/default-layout/layer" ⊕) ["0","1","2"]
+
+decodes ∷ MonadIO μ ⇒ [FilePath] → μ (Either 𝕊 AtreusBoard)
+decodes fns = do
+  fmap sequence (mapM decode fns) >>= \ case
+    Left e   → return $ Left e
+    Right ls → case boardFromLayers ls of
+                 Left e' → return $ Left (show e')
+                 Right b → return $ Right b
+
+groupN n xs = if length xs > n then take n xs : groupN n (drop n xs) else [xs]
+
+{- | Split an atreus layer def into rows, being ltop, rtop, lnext, rnext, ... -}
+alKeys ∷ AtreusLayer → [[AtreusLayerKey]]
+alKeys = groupN 6 ∘ otoList
+
+board ∷ (MonadIO μ, MonadFail μ) ⇒
+        μ [(AtreusLayerKey,AtreusLayerKey,AtreusLayerKey,AtreusLayerKey,
+            AtreusLayerKey)]
+board = do
+  Right (AtreusBoard l0 l1 l2 l3 l4) ← decodes fns
+  return $ toList $ (,,,,) <$> ZipList (otoList l0)
+                           <*> ZipList (otoList l1)
+                           <*> ZipList (otoList l2)
+                           <*> ZipList (otoList l3)
+                           <*> ZipList (otoList l4)
+
+t5map ∷ (β → α) → (β,β,β,β,β) → (α,α,α,α,α)
+
+t5map f (a,b,c,d,e) = (f a, f b, f c, f d, f e)
+
+lrRows ∷ (MonadIO μ, MonadFail μ) ⇒ μ [[(𝕊,𝕊,𝕊,𝕊,𝕊)]]
+lrRows = fmap (fmap (fmap $ t5map label)) (groupN 6 <$> board)
+
+mkKey ∷ (𝕊,𝕊,𝕊,𝕊,𝕊) → Key
+mkKey input =
+  let (a,b,c,d,e) = t5map (\ s → if s ∈ [ "", "Blocked" ]
+                                 then Nothing
+                                 else Just s)
+                          input
+   in Key a b c d e
+
+getRows = do
+  [l0,r0,l1,r1,l2,r2,l3,r3] ← fmap (fmap $ fmap mkKey) $ lrRows
+  return (l0,r0,l1,r1,l2,r2,l3,r3)
+
+getCols ∷ IO ([(Key,Key,Key,Key)], [(Key,Key,Key,Key)])
+getCols = do
+  [l0,r0,l1,r1,l2,r2,l3,r3] ← fmap (fmap $ fmap mkKey) $ lrRows
+--  return (l0,r0,l1,r1,l2,r2,l3,r3)
+  return $ ( toList $ (,,,) <$> ZipList l0 <*> ZipList l1
+                            <*> ZipList l2 <*> ZipList l3
+           , toList $ (,,,) <$> ZipList r0 <*> ZipList r1
+                            <*> ZipList r2 <*> ZipList r3
+           )
+
+lrRows' ∷ (MonadIO μ, MonadFail μ) ⇒ μ [[Diagram B]]
+lrRows' = join $ fmap (mapM $ keys ∘ fmap mkKey) lrRows
+
+-- getCols' ∷ IO ([(Diagram B,Diagram B,Diagram B,Diagram B)], [(Diagram B,Diagram B,Diagram B,Diagram B)])
+getCols' = do
+  [l0,r0,l1,r1,l2,r2,l3,r3] ← fmap (fmap $ fmap mkKey) $ lrRows
+  join $ return $ mapM (mapM key) [l0,r0]
+{-
+  return $ ( toList $ (,,,) <$> ZipList l0 <*> ZipList l1
+                            <*> ZipList l2 <*> ZipList l3
+           , toList $ (,,,) <$> ZipList r0 <*> ZipList r1
+                            <*> ZipList r2 <*> ZipList r3
+           )
+-}
+
+{-
+atreus_layout' ∷ IO (Diagram B)
+atreus_layout' = do
+  fonts ← getFonts @𝔻
+  flip runReaderT fonts $ do
+    ([c0,c1,c2,c3,c4,c5],[c6,c7,c8,c9,c10,c11]) ← getCols
+
+    let rot = -10@@deg
+    let place ks y = vsup 0.1 (reverse ks) # transform (translationY y)
+                                           # transform (rotation rot)
+                                           -- # showOrigin
+                                           -- # showEnvelope
+
+    return $ cat' (V2 1 0)
+                  (with & catMethod .~ Distrib & sep .~ (1.2 ÷ cosA rot))
+                  [ place c0 0
+                  , place c1 0
+                  , place c2 0
+                  , place c3 (-0.5)
+                  , place c4 (-1.0)
+                  , place c5 (-1.0)
+                  ]
+
+-}
