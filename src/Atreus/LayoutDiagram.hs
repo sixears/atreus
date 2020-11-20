@@ -37,7 +37,7 @@ import Data.Functor            ( (<$>), fmap )
 import Data.List               ( drop, filter, repeat, replicate
                                , reverse, splitAt, take, zipWith5 )
 import Data.Maybe              ( Maybe( Just, Nothing ), fromMaybe, isNothing )
-import Data.Monoid             ( Monoid, mconcat )
+import Data.Monoid             ( Monoid, mconcat, mempty )
 import Data.Ord                ( (>) )
 import Data.String             ( String )
 import Data.Traversable        ( Traversable )
@@ -50,6 +50,7 @@ import Text.Show               ( Show, show )
 -- base-unicode-symbols ----------------
 
 import Prelude.Unicode          ( (÷) )
+import Data.Bool.Unicode        ( (∧) )
 import Data.Eq.Unicode          ( (≡) )
 import Data.List.Unicode        ( (∈) )
 import Data.Function.Unicode    ( (∘) )
@@ -292,7 +293,10 @@ key (Key c tl tr bl br) = liftIO $ do
     t3 ← text' 0.35 (fromMaybe "" tl) green   0.45  (-0.45) alignTL
     t4 ← text' 0.35 (fromMaybe "" bl) yellow  0.45    0.45  alignBL
 
-    return $ mconcat [ box1 , t0, t1, t2, t3, t4 ]
+    return $ if c ≡ Nothing ∧ tr ≡ Nothing ∧ br ≡ Nothing ∧ tl ≡ Nothing ∧ bl ≡ Nothing
+             then mempty
+             else mconcat [ box1, t0, t1, t2, t3, t4 ]
+
 ----------------------------------------
 
 keys ∷ (MonadIO μ, MonoFoldable φ, Element φ ~ Key) ⇒ φ → μ [Diagram B]
@@ -304,7 +308,12 @@ atreus_layout ∷ IO (Diagram B)
 atreus_layout = do
   fonts ← getFonts @𝔻
   flip runReaderT fonts $ do
-    [ks0,ks1,ks2,ks3,ks4,ks5] ← mapM keys leftColumns
+    -- [ks0,ks1,ks2,ks3,ks4,ks5] ← mapM keys leftColumns
+    -- XXX !!! use mempty instead of "" for empty keys in `key`     !!!
+    -- XXX !!! keyCols' needs to use fonts!                         !!!
+    -- XXX !!! Use types for, e.g., KeySpec; check lengths of lists !!!
+    -- XXX !!! placeCols fn                                         !!!
+    ((ks0:ks1:ks2:ks3:ks4:ks5:_),_) ← keyCols'
 
     let rot = -10@@deg
     let place ks y = vsup 0.1 (reverse ks) # transform (translationY y)
@@ -414,9 +423,6 @@ t5map ∷ (β → α) → (β,β,β,β,β) → (α,α,α,α,α)
 
 t5map f (a,b,c,d,e) = (f a, f b, f c, f d, f e)
 
-lrRows ∷ (MonadIO μ, MonadFail μ) ⇒ μ [[(𝕊,𝕊,𝕊,𝕊,𝕊)]]
-lrRows = fmap (fmap (fmap $ t5map label)) (groupN 6 <$> board)
-
 mkKey ∷ (𝕊,𝕊,𝕊,𝕊,𝕊) → Key
 mkKey input =
   let (a,b,c,d,e) = t5map (\ s → if s ∈ [ "", "Blocked" ]
@@ -439,20 +445,50 @@ getCols = do
                             <*> ZipList r2 <*> ZipList r3
            )
 
+lrRows ∷ (MonadIO μ, MonadFail μ) ⇒ μ [[(𝕊,𝕊,𝕊,𝕊,𝕊)]]
+lrRows = fmap (fmap (fmap $ t5map label)) (groupN 6 <$> board)
+
+lrCols ∷ (MonadIO μ, MonadFail μ) ⇒ μ ([[(𝕊,𝕊,𝕊,𝕊,𝕊)]],[[(𝕊,𝕊,𝕊,𝕊,𝕊)]])
+lrCols = do
+  [l0,r0,l1,r1,l2,r2,l3,r3] ← lrRows
+  let (+++) a b c d = [a,b,c,d]
+
+  return $ ( toList $ (+++) <$> ZipList l0 <*> ZipList l1
+                            <*> ZipList l2 <*> ZipList l3
+           , toList $ (+++) <$> ZipList r0 <*> ZipList r1
+                            <*> ZipList r2 <*> ZipList r3
+           )
+
+keyCols ∷ (MonadIO μ, Traversable ψ, Traversable φ) ⇒
+          ψ (φ (𝕊,𝕊,𝕊,𝕊,𝕊)) → μ (ψ (φ (Diagram B)))
+keyCols = mapM (mapM (key ∘ mkKey))
+
+keyCols' ∷ (MonadIO μ, MonadFail μ) ⇒ μ ([[Diagram B]], [[Diagram B]])
+keyCols' = do
+  (l,r) ← lrCols
+  l'    ← keyCols l
+  r'    ← keyCols r
+  return (l',r')
+
 lrRows' ∷ (MonadIO μ, MonadFail μ) ⇒ μ [[Diagram B]]
 lrRows' = join $ fmap (mapM $ keys ∘ fmap mkKey) lrRows
 
--- getCols' ∷ IO ([(Diagram B,Diagram B,Diagram B,Diagram B)], [(Diagram B,Diagram B,Diagram B,Diagram B)])
+--getCols' ∷ (MonadIO μ, MonadFail μ) ⇒
+--           μ ([(Diagram B,Diagram B,Diagram B,Diagram B)],
+--              [(Diagram B,Diagram B,Diagram B,Diagram B)])
+getCols' ∷ (MonadIO μ, MonadFail μ) ⇒ μ ([[Diagram B]], [[Diagram B]])
 getCols' = do
-  [l0,r0,l1,r1,l2,r2,l3,r3] ← fmap (fmap $ fmap mkKey) $ lrRows
-  join $ return $ mapM (mapM key) [l0,r0]
-{-
-  return $ ( toList $ (,,,) <$> ZipList l0 <*> ZipList l1
+  let (+++) a b c d = [a,b,c,d]
+
+  [l0,r0,l1,r1,l2,r2,l3,r3] ← lrRows'
+--  join $ return $ mapM (mapM key)
+--  return $ [l0,r0]
+
+  return $ ( toList $ (+++) <$> ZipList l0 <*> ZipList l1
                             <*> ZipList l2 <*> ZipList l3
-           , toList $ (,,,) <$> ZipList r0 <*> ZipList r1
+           , toList $ (+++) <$> ZipList r0 <*> ZipList r1
                             <*> ZipList r2 <*> ZipList r3
            )
--}
 
 {-
 atreus_layout' ∷ IO (Diagram B)
