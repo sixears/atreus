@@ -135,10 +135,22 @@ getFonts = do
   l ← SF.lin
   return $ Fonts { lin = l }
 
---------------------------------------------------------------------------------
+------------------------------------------------------------
+
+class IsNull α where
+  isNull ∷ α → 𝔹
+
+------------------------------------------------------------
 
 data Key = Key (𝕄 𝕊) (𝕄 𝕊) (𝕄 𝕊) (𝕄 𝕊) (𝕄 𝕊)
   deriving Show
+
+--------------------
+
+instance IsNull Key where
+  isNull (Key a b c d e) = all isNothing [a,b,c,d,e]
+
+--------------------
 
 type instance Element Key = 𝕄 𝕊
 
@@ -284,7 +296,7 @@ text' h  t c x y a = do
 
 {- | Create a diagram for a key with the given labels. -}
 key ∷ MonadIO μ ⇒ Key → μ (Diagram B)
-key (Key c tl tr bl br) = liftIO $ do
+key k@(Key c tl tr bl br) = liftIO $ do
   fonts ← getFonts
   flip runReaderT fonts $ do
     t0 ← text' 0.5  (fromMaybe "" c)  grey    0       0     centerXY
@@ -293,9 +305,23 @@ key (Key c tl tr bl br) = liftIO $ do
     t3 ← text' 0.35 (fromMaybe "" tl) green   0.45  (-0.45) alignTL
     t4 ← text' 0.35 (fromMaybe "" bl) yellow  0.45    0.45  alignBL
 
-    return $ if c ≡ Nothing ∧ tr ≡ Nothing ∧ br ≡ Nothing ∧ tl ≡ Nothing ∧ bl ≡ Nothing
+    return $ if isNull k
              then mempty
              else mconcat [ box1, t0, t1, t2, t3, t4 ]
+
+{- | Create a diagram for a key with the given labels.  Return an empty diagram
+     if all the labels are `Nothing` (as opposed to, say, the empty string). -}
+key' ∷ MonadReader (Fonts 𝔻) μ ⇒ Key → μ (Diagram B)
+key' k@(Key c tl tr bl br) = do
+  t0 ← text' 0.5  (fromMaybe "" c)  grey    0       0     centerXY
+  t1 ← text' 0.35 (fromMaybe "" tr) red   (-0.45) (-0.45) alignTR
+  t2 ← text' 0.35 (fromMaybe "" br) blue  (-0.45)   0.45  alignBR
+  t3 ← text' 0.35 (fromMaybe "" tl) green   0.45  (-0.45) alignTL
+  t4 ← text' 0.35 (fromMaybe "" bl) yellow  0.45    0.45  alignBL
+
+  return $ if isNull k
+           then mempty
+           else mconcat [ box1, t0, t1, t2, t3, t4 ]
 
 ----------------------------------------
 
@@ -308,12 +334,9 @@ atreus_layout ∷ IO (Diagram B)
 atreus_layout = do
   fonts ← getFonts @𝔻
   flip runReaderT fonts $ do
-    -- [ks0,ks1,ks2,ks3,ks4,ks5] ← mapM keys leftColumns
-    -- XXX !!! use mempty instead of "" for empty keys in `key`     !!!
-    -- XXX !!! keyCols' needs to use fonts!                         !!!
     -- XXX !!! Use types for, e.g., KeySpec; check lengths of lists !!!
     -- XXX !!! placeCols fn                                         !!!
-    ((ks0:ks1:ks2:ks3:ks4:ks5:_),_) ← keyCols'
+    ((ks0:ks1:ks2:ks3:ks4:ks5:_),_) ← keyCols_' fns
 
     let rot = -10@@deg
     let place ks y = vsup 0.1 (reverse ks) # transform (translationY y)
@@ -419,6 +442,18 @@ board = do
                            <*> ZipList (otoList l3)
                            <*> ZipList (otoList l4)
 
+board' ∷ (MonadIO μ, MonadFail μ) ⇒
+        [FilePath]
+      → μ [(AtreusLayerKey,AtreusLayerKey,AtreusLayerKey,AtreusLayerKey,
+            AtreusLayerKey)]
+board' fns = do
+  Right (AtreusBoard l0 l1 l2 l3 l4) ← decodes fns
+  return $ toList $ (,,,,) <$> ZipList (otoList l0)
+                           <*> ZipList (otoList l1)
+                           <*> ZipList (otoList l2)
+                           <*> ZipList (otoList l3)
+                           <*> ZipList (otoList l4)
+
 t5map ∷ (β → α) → (β,β,β,β,β) → (α,α,α,α,α)
 
 t5map f (a,b,c,d,e) = (f a, f b, f c, f d, f e)
@@ -448,9 +483,24 @@ getCols = do
 lrRows ∷ (MonadIO μ, MonadFail μ) ⇒ μ [[(𝕊,𝕊,𝕊,𝕊,𝕊)]]
 lrRows = fmap (fmap (fmap $ t5map label)) (groupN 6 <$> board)
 
+lrRows_ ∷ (MonadIO μ, MonadFail μ) ⇒ [FilePath] → μ [[(𝕊,𝕊,𝕊,𝕊,𝕊)]]
+lrRows_ fns = fmap (fmap (fmap $ t5map label)) (groupN 6 <$> board' fns)
+
 lrCols ∷ (MonadIO μ, MonadFail μ) ⇒ μ ([[(𝕊,𝕊,𝕊,𝕊,𝕊)]],[[(𝕊,𝕊,𝕊,𝕊,𝕊)]])
 lrCols = do
   [l0,r0,l1,r1,l2,r2,l3,r3] ← lrRows
+  let (+++) a b c d = [a,b,c,d]
+
+  return $ ( toList $ (+++) <$> ZipList l0 <*> ZipList l1
+                            <*> ZipList l2 <*> ZipList l3
+           , toList $ (+++) <$> ZipList r0 <*> ZipList r1
+                            <*> ZipList r2 <*> ZipList r3
+           )
+
+lrCols_ ∷ (MonadIO μ, MonadFail μ) ⇒
+          [FilePath] → μ ([[(𝕊,𝕊,𝕊,𝕊,𝕊)]],[[(𝕊,𝕊,𝕊,𝕊,𝕊)]])
+lrCols_ fns = do
+  [l0,r0,l1,r1,l2,r2,l3,r3] ← lrRows_ fns
   let (+++) a b c d = [a,b,c,d]
 
   return $ ( toList $ (+++) <$> ZipList l0 <*> ZipList l1
@@ -463,6 +513,10 @@ keyCols ∷ (MonadIO μ, Traversable ψ, Traversable φ) ⇒
           ψ (φ (𝕊,𝕊,𝕊,𝕊,𝕊)) → μ (ψ (φ (Diagram B)))
 keyCols = mapM (mapM (key ∘ mkKey))
 
+keyCols_ ∷ (MonadReader (Fonts 𝔻) η, Traversable ψ, Traversable φ) ⇒
+          ψ (φ (𝕊,𝕊,𝕊,𝕊,𝕊)) → η (ψ (φ (Diagram B)))
+keyCols_ = mapM (mapM $ key' ∘ mkKey)
+
 keyCols' ∷ (MonadIO μ, MonadFail μ) ⇒ μ ([[Diagram B]], [[Diagram B]])
 keyCols' = do
   (l,r) ← lrCols
@@ -470,47 +524,10 @@ keyCols' = do
   r'    ← keyCols r
   return (l',r')
 
-lrRows' ∷ (MonadIO μ, MonadFail μ) ⇒ μ [[Diagram B]]
-lrRows' = join $ fmap (mapM $ keys ∘ fmap mkKey) lrRows
-
---getCols' ∷ (MonadIO μ, MonadFail μ) ⇒
---           μ ([(Diagram B,Diagram B,Diagram B,Diagram B)],
---              [(Diagram B,Diagram B,Diagram B,Diagram B)])
-getCols' ∷ (MonadIO μ, MonadFail μ) ⇒ μ ([[Diagram B]], [[Diagram B]])
-getCols' = do
-  let (+++) a b c d = [a,b,c,d]
-
-  [l0,r0,l1,r1,l2,r2,l3,r3] ← lrRows'
---  join $ return $ mapM (mapM key)
---  return $ [l0,r0]
-
-  return $ ( toList $ (+++) <$> ZipList l0 <*> ZipList l1
-                            <*> ZipList l2 <*> ZipList l3
-           , toList $ (+++) <$> ZipList r0 <*> ZipList r1
-                            <*> ZipList r2 <*> ZipList r3
-           )
-
-{-
-atreus_layout' ∷ IO (Diagram B)
-atreus_layout' = do
-  fonts ← getFonts @𝔻
-  flip runReaderT fonts $ do
-    ([c0,c1,c2,c3,c4,c5],[c6,c7,c8,c9,c10,c11]) ← getCols
-
-    let rot = -10@@deg
-    let place ks y = vsup 0.1 (reverse ks) # transform (translationY y)
-                                           # transform (rotation rot)
-                                           -- # showOrigin
-                                           -- # showEnvelope
-
-    return $ cat' (V2 1 0)
-                  (with & catMethod .~ Distrib & sep .~ (1.2 ÷ cosA rot))
-                  [ place c0 0
-                  , place c1 0
-                  , place c2 0
-                  , place c3 (-0.5)
-                  , place c4 (-1.0)
-                  , place c5 (-1.0)
-                  ]
-
--}
+keyCols_' ∷ (MonadIO μ, MonadFail μ, MonadReader (Fonts 𝔻) μ) ⇒
+            [FilePath] → μ ([[Diagram B]], [[Diagram B]])
+keyCols_' fns = do
+  (l,r) ← lrCols_ fns
+  l'    ← keyCols_ l
+  r'    ← keyCols_ r
+  return (l',r')
