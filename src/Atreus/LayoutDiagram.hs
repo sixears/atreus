@@ -3,10 +3,13 @@
 {-# LANGUAGE LambdaCase                #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE NoImplicitPrelude         #-}
+{-# LANGUAGE OverloadedStrings         #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE UnicodeSyntax             #-}
+{-# LANGUAGE ViewPatterns              #-}
 
 module Atreus.LayoutDiagram
   ( atreus_layout )
@@ -17,7 +20,7 @@ import Control.Lens.Tuple
 
 --------------------------------------------------------------------------------
 
-import Prelude  ( Double, RealFloat, fromIntegral )
+import Prelude  ( Double, RealFloat, fromIntegral, undefined )
 
 -- aeson -------------------------------
 
@@ -25,22 +28,23 @@ import Data.Aeson  ( FromJSON, Value, eitherDecodeFileStrict' )
 
 -- base --------------------------------
 
-import Control.Applicative     ( ZipList( ZipList ), (<*>) )
+import Control.Applicative     ( Applicative( (<*>), liftA2, pure )
+                               , ZipList( ZipList ) )
 import Control.Monad           ( MonadFail, (>>=), join, mapM, return,sequence )
 import Control.Monad.IO.Class  ( MonadIO, liftIO )
 import Data.Bool               ( Bool( False ), not )
 import Data.Either             ( Either( Left, Right ) )
-import Data.Foldable           ( all, foldl', foldl1, foldMap, foldr, foldr1
-                               , length, toList )
+import Data.Foldable           ( Foldable, all, foldl', foldl1, foldMap, foldr
+                               , foldr1, length, toList )
 import Data.Function           ( ($), (&), flip )
-import Data.Functor            ( (<$>), fmap )
+import Data.Functor            ( Functor( fmap ), (<$>) )
 import Data.List               ( drop, filter, repeat, replicate
                                , reverse, splitAt, take, zipWith5 )
 import Data.Maybe              ( Maybe( Just, Nothing ), fromMaybe, isNothing )
 import Data.Monoid             ( Monoid, mconcat, mempty )
 import Data.Ord                ( (>) )
 import Data.String             ( String )
-import Data.Traversable        ( Traversable )
+import Data.Traversable        ( Traversable( traverse ) )
 import GHC.Float               ( Floating )
 import GHC.Generics            ( Generic )
 import System.IO               ( FilePath, IO )
@@ -71,7 +75,12 @@ import Data.Default  ( def )
 import Data.MonoTraversable  ( Element
                              , MonoFoldable( ofoldl', ofoldl1Ex', ofoldMap
                                            , ofoldr, ofoldr1Ex, otoList )
+                             , MonoFunctor ( omap )
                              )
+
+-- data-textual ------------------------
+
+import Data.Textual  ( Printable( print ) )
 
 -- diagrams-core -----------------------
 
@@ -105,7 +114,7 @@ import Control.Lens.Setter  ( (.~) )
 
 -- mtl ---------------------------------
 
-import Control.Monad.Except  ( MonadError, throwError )
+import Control.Monad.Except  ( MonadError, runExceptT, throwError )
 import Control.Monad.Reader  ( MonadReader, asks, runReaderT )
 
 -- SVGFonts ----------------------------
@@ -117,6 +126,14 @@ import Graphics.SVGFonts  ( Mode( INSIDE_H ), Spacing( KERN )
                           , textSVG'
                           )
 import Graphics.SVGFonts.ReadFont  ( PreparedFont )
+
+-- text --------------------------------
+
+import Data.Text  ( Text )
+
+-- text-printer ------------------------
+
+import qualified Text.Printer  as  P
 
 --------------------------------------------------------------------------------
 
@@ -336,10 +353,15 @@ atreus_layout = do
   flip runReaderT fonts $ do
     -- XXX !!! Use types for, e.g., KeySpec; check lengths of lists !!!
     -- XXX !!! placeCols fn                                         !!!
-    ((ks0:ks1:ks2:ks3:ks4:ks5:_),_) ← keyCols_' fns
+--     ((ks0:ks1:ks2:ks3:ks4:ks5:_),_) ← keyCols_' fns
+    
+
+    ((L6 ks0 ks1 ks2 ks3 ks4 ks5),_) ← runExceptT (keyCols_'' fns) >>= \ case
+                                         Right r → return r
+
 
     let rot = -10@@deg
-    let place ks y = vsup 0.1 (reverse ks) # transform (translationY y)
+    let place ks y = vsup 0.1 (reverse $ toList ks) # transform (translationY y)
                                            # transform (rotation rot)
                                            -- # showOrigin
                                            -- # showEnvelope
@@ -410,7 +432,6 @@ boardFromLayers ls =
   else let [l0,l1,l2,l3,l4] = take 5 $ ls ⊕ repeat atreusLayerEmpty
         in return $ AtreusBoard l0 l1 l2 l3 l4
 
-
 decode ∷ MonadIO μ ⇒ FilePath → μ (Either 𝕊 AtreusLayer)
 decode fn = liftIO $ eitherDecodeFileStrict' @AtreusLayer fn
 
@@ -425,7 +446,13 @@ decodes fns = do
                  Left e' → return $ Left (show e')
                  Right b → return $ Right b
 
-groupN n xs = if length xs > n then take n xs : groupN n (drop n xs) else [xs]
+groupN ∷ ℕ → [α] → [[α]]
+groupN n@(fromIntegral → i) xs = if length xs > i then take i xs : groupN n (drop i xs) else [xs]
+
+groupT6 ∷ MonadError ε η ⇒ ([α] → ε) → [α] → η [L6 α]
+groupT6 _   []               = return []
+groupT6 err (a:b:c:d:e:f:xs) = (L6 a b c d e f :) <$> (groupT6 err xs)
+groupT6 err xs               = throwError $ err xs
 
 {- | Split an atreus layer def into rows, being ltop, rtop, lnext, rnext, ... -}
 alKeys ∷ AtreusLayer → [[AtreusLayerKey]]
@@ -454,6 +481,100 @@ board' fns = do
                            <*> ZipList (otoList l3)
                            <*> ZipList (otoList l4)
 
+data L4 α = L4 α α α α
+
+instance Functor L4 where
+  fmap f (L4 a b c d) = L4 (f a) (f b) (f c) (f d)
+
+instance Foldable L4 where
+  foldr f x (L4 a b c d) = foldr f x [a,b,c,d]
+
+instance Traversable L4 where
+  {-# INLINE traverse #-} -- so that traverse can fuse
+  traverse f (L4 a b c d) = L4 <$> f a <*> f b <*> f c <*> f d
+
+data L5 α = L5 α α α α α
+
+instance Functor L5 where
+  fmap f (L5 a b c d e) = L5 (f a) (f b) (f c) (f d) (f e)
+
+instance Foldable L5 where
+  foldr f x (L5 a b c d e) = foldr f x [a,b,c,d,e]
+
+type AKey' = L5 AtreusLayerKey
+
+{- | A six-tuple of a fixed type, or a list of 6, if you prefer. -}
+data L6 α = L6 α α α α α α
+
+{-
+instance Applicative L6 where
+  {-# INLINE pure #-}
+  pure x    = L6 x x x x x x
+  {-# INLINE (<*>) #-}
+  (L6 f0 f1 f2 f3 f4 f5) <*> (L6 x0 x1 x2 x3 x4 x5) =
+    L6 (f0 x0) (f1 x1) (f2 x2) (f3 x3) (f4 x4) (f5 x5)
+-}
+
+instance Traversable L6 where
+  {-# INLINE traverse #-} -- so that traverse can fuse
+  traverse g (L6 a b c d e f) =
+    L6 <$> g a <*> g b <*> g c <*> g d <*> g e <*> g f
+{-
+    foldr1 cons_f
+      where cons_f x ys = _ -- liftA2 (:) (f x) ys
+-}
+
+instance Functor L6 where
+  fmap g (L6 a b c d e f) = L6 (g a) (g b) (g c) (g d) (g e) (g f)
+
+instance Foldable L6 where
+  foldr g x (L6 a b c d e f) = foldr g x [a,b,c,d,e,f]
+
+-- data AKey' = AKey' AtreusLayerKey AtreusLayerKey AtreusLayerKey AtreusLayerKey
+--                    AtreusLayerKey
+
+-- type instance Element AKey' = AtreusLayerKey
+
+-- instance MonoFunctor AKey' where
+--   omap f (AKey' a b c d e) = AKey' (f a) (f b) (f c) (f d) (f e)
+
+{-
+instance MonoFoldable AKey' where
+  otoList (AKey' a b c d e) = [a,b,c,d,e]
+  ofoldl' f x = foldl' f x ∘ otoList
+  ofoldr f x = foldr f x ∘ otoList
+  ofoldMap f = foldMap f ∘ otoList
+  ofoldr1Ex f = foldr1 f ∘ otoList
+  ofoldl1Ex' f   = foldl1 f ∘ otoList
+-}
+
+data AtreusLayoutE = AtreusFailedDecodeE 𝕊
+                   | AtreusWrongRowCount [L6 KeySpec]
+                   | AtreusWrongKeyCount [AKey']
+                   | AtreusWrongColumnCount [KeyCol]
+
+instance Printable AtreusLayoutE where
+  print (AtreusFailedDecodeE s) = P.string $ "layer decode failed: " ⊕ s
+  print (AtreusWrongRowCount rs) =
+    P.string $ "got wrong number of rows: " ⊕ show (length rs)
+  print (AtreusWrongKeyCount ks) =
+    P.string $ "got wrong number of keys: " ⊕ show (length ks)
+  print (AtreusWrongColumnCount cs) =
+    P.string $ "got wrong column count: " ⊕ show (length cs)
+
+{- | A list of keys, over 5 layers.  Only keys that are represented on all
+     layers are returned. -}
+board_' ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ [AKey']
+board_' fns = do
+  decodes fns >>= \ case
+    Right (AtreusBoard l0 l1 l2 l3 l4) → 
+      return $ toList $ L5 <$> ZipList (otoList l0)
+                           <*> ZipList (otoList l1)
+                           <*> ZipList (otoList l2)
+                           <*> ZipList (otoList l3)
+                           <*> ZipList (otoList l4)
+    Left e → throwError $ AtreusFailedDecodeE e
+
 t5map ∷ (β → α) → (β,β,β,β,β) → (α,α,α,α,α)
 
 t5map f (a,b,c,d,e) = (f a, f b, f c, f d, f e)
@@ -464,6 +585,14 @@ mkKey input =
                                  then Nothing
                                  else Just s)
                           input
+   in Key a b c d e
+
+mkKey' ∷ KeySpec → Key
+mkKey' k =
+  let (L5 a b c d e) = fmap (\ s → if s ∈ [ "", "Blocked" ]
+                                 then Nothing
+                                 else Just s)
+                          k
    in Key a b c d e
 
 getRows = do
@@ -485,6 +614,36 @@ lrRows = fmap (fmap (fmap $ t5map label)) (groupN 6 <$> board)
 
 lrRows_ ∷ (MonadIO μ, MonadFail μ) ⇒ [FilePath] → μ [[(𝕊,𝕊,𝕊,𝕊,𝕊)]]
 lrRows_ fns = fmap (fmap (fmap $ t5map label)) (groupN 6 <$> board' fns)
+
+data Board = Board [(𝕊,𝕊,𝕊,𝕊,𝕊)] [(𝕊,𝕊,𝕊,𝕊,𝕊)] [(𝕊,𝕊,𝕊,𝕊,𝕊)] [(𝕊,𝕊,𝕊,𝕊,𝕊)] [(𝕊,𝕊,𝕊,𝕊,𝕊)] [(𝕊,𝕊,𝕊,𝕊,𝕊)] [(𝕊,𝕊,𝕊,𝕊,𝕊)] [(𝕊,𝕊,𝕊,𝕊,𝕊)]
+
+type KeySpec = L5 𝕊
+
+type Row = L6 KeySpec
+
+data Board' = Board' [KeySpec] [KeySpec] [KeySpec] [KeySpec] [KeySpec] [KeySpec] [KeySpec] [KeySpec]
+
+type KeyCol = L4 KeySpec
+
+type KeyRow = L6 KeySpec
+
+data Board'' = Board'' KeyRow KeyRow KeyRow KeyRow KeyRow KeyRow KeyRow KeyRow
+
+data EWrongRowCount = EWrongRowCount ℕ [ℕ]
+  deriving Show
+
+len ∷ Foldable ψ ⇒ ψ α → ℕ
+len = fromIntegral ∘ length
+
+lrRows__' ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒
+            [FilePath] → μ [L6 (L5 𝕊)]
+lrRows__' fns = join $ fmap (fmap (fmap (fmap $ fmap label))) (groupT6 AtreusWrongKeyCount <$> board_' fns)
+
+lrRows__'' ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ Board''
+lrRows__'' fns =
+  lrRows__' fns >>= \ case
+    [l0,r0,l1,r1,l2,r2,l3,r3] → return $ Board'' l0 r0 l1 r1 l2 r2 l3 r3
+    rows                      → throwError $ AtreusWrongRowCount rows
 
 lrCols ∷ (MonadIO μ, MonadFail μ) ⇒ μ ([[(𝕊,𝕊,𝕊,𝕊,𝕊)]],[[(𝕊,𝕊,𝕊,𝕊,𝕊)]])
 lrCols = do
@@ -509,6 +668,45 @@ lrCols_ fns = do
                             <*> ZipList r2 <*> ZipList r3
            )
 
+lrCols_' ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒
+           [FilePath] → μ ([KeyCol],[KeyCol])
+lrCols_' fns = do
+  Board'' l0 r0 l1 r1 l2 r2 l3 r3 ← lrRows__'' fns
+
+  let kcol [x0,x1,x2,x3,x4,x5] = return $ L6 x0 x1 x2 x3 x4 x5
+      kcol xs                  = throwError $ AtreusWrongColumnCount xs
+
+  return $ ( toList $ L4 <$> ZipList (toList l0) <*> ZipList (toList l1)
+                            <*> ZipList (toList l2) <*> ZipList (toList l3)
+           , toList $ L4 <$> ZipList (toList r0) <*> ZipList (toList r1)
+                            <*> ZipList (toList r2) <*> ZipList (toList r3)
+           )
+
+lrCols_'' ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒
+            [FilePath] → μ (L6 KeyCol,L6 KeyCol)
+lrCols_'' fns = do
+  Board'' l0 r0 l1 r1 l2 r2 l3 r3 ← lrRows__'' fns
+
+  let kcol [x0,x1,x2,x3,x4,x5] = return $ L6 x0 x1 x2 x3 x4 x5
+      kcol xs                  = throwError $ AtreusWrongColumnCount xs
+
+  l ∷ L6 KeyCol ← kcol $ toList $ L4 <$> ZipList (toList l0)
+                                     <*> ZipList (toList l1)
+                                     <*> ZipList (toList l2)
+                                     <*> ZipList (toList l3)
+
+  r ∷ L6 KeyCol ← kcol $ toList $ L4 <$> ZipList (toList r0)
+                                     <*> ZipList (toList r1)
+                                     <*> ZipList (toList r2)
+                                     <*> ZipList (toList r3)
+
+
+  return $ ( -- toList $ L4 <$> ZipList (toList l0) <*> ZipList (toList l1) <*> ZipList (toList l2) <*> ZipList (toList l3)
+            l, r
+--            , toList $ L4 <$> ZipList (toList r0) <*> ZipList (toList r1) <*> ZipList (toList r2) <*> ZipList (toList r3)
+           )
+
+
 keyCols ∷ (MonadIO μ, Traversable ψ, Traversable φ) ⇒
           ψ (φ (𝕊,𝕊,𝕊,𝕊,𝕊)) → μ (ψ (φ (Diagram B)))
 keyCols = mapM (mapM (key ∘ mkKey))
@@ -531,3 +729,18 @@ keyCols_' fns = do
   l'    ← keyCols_ l
   r'    ← keyCols_ r
   return (l',r')
+
+_keyCols ∷ (MonadReader (Fonts 𝔻) η, Traversable ψ, Traversable φ) ⇒
+           ψ (φ KeySpec) → η (ψ (φ (Diagram B)))
+_keyCols = mapM (mapM $ key' ∘ mkKey')
+
+type DiagramB = Diagram B
+
+keyCols_'' ∷ (MonadIO μ, MonadError AtreusLayoutE μ, MonadReader (Fonts 𝔻) μ) ⇒
+             [FilePath] → μ (L6 (L4 DiagramB), L6 (L4 DiagramB))
+keyCols_'' fns = do
+  (l,r) ← lrCols_'' fns
+  l'    ← _keyCols l
+  r'    ← _keyCols r
+  return (l',r')
+
