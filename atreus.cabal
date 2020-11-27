@@ -61,7 +61,7 @@ library
   -- Other library packages from which modules are imported.
   build-depends:     aeson, base, base-unicode-symbols, colour, data-default
                    , data-textual, diagrams-core, diagrams-lib, diagrams-svg
-                   , lens, mono-traversable, mtl, SVGFonts, text, text-printer
+                   , lens, mono-traversable, mtl, SVGFonts, text-printer
 
   -- Directories containing source files.
   hs-source-dirs:      src
