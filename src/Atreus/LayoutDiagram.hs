@@ -1,16 +1,18 @@
-{-# LANGUAGE DeriveGeneric             #-}
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE LambdaCase                #-}
-{-# LANGUAGE MultiParamTypeClasses     #-}
-{-# LANGUAGE NoImplicitPrelude         #-}
-{-# LANGUAGE OverloadedStrings         #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE PatternSynonyms           #-}
-{-# LANGUAGE ScopedTypeVariables       #-}
-{-# LANGUAGE TypeApplications          #-}
-{-# LANGUAGE TypeFamilies              #-}
-{-# LANGUAGE UnicodeSyntax             #-}
-{-# LANGUAGE ViewPatterns              #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE LiberalTypeSynonyms        #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE NoMonomorphismRestriction  #-}
+{-# LANGUAGE PatternSynonyms            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE UnicodeSyntax              #-}
+{-# LANGUAGE ViewPatterns               #-}
 
 module Atreus.LayoutDiagram
   ( atreus_layout )
@@ -21,7 +23,7 @@ import Control.Lens.Tuple
 
 --------------------------------------------------------------------------------
 
-import Prelude  ( Double, RealFloat )
+import Prelude  ( Double, RealFloat, undefined )
 
 -- aeson -------------------------------
 
@@ -36,7 +38,7 @@ import Data.Bool               ( Bool( False ) )
 import Data.Either             ( Either( Left, Right ), either )
 import Data.Foldable           ( Foldable, all, foldl', foldl1, foldMap, foldr
                                , foldr1, length, toList )
-import Data.Function           ( ($), (&), flip )
+import Data.Function           ( ($), (&), flip, id )
 import Data.Functor            ( Functor( fmap ), (<$>) )
 import Data.List               ( repeat, replicate, reverse, take )
 import Data.Maybe              ( Maybe( Just, Nothing ), fromMaybe, isNothing )
@@ -54,6 +56,7 @@ import Text.Show               ( Show, show )
 -- base-unicode-symbols ----------------
 
 import Prelude.Unicode          ( (÷) )
+import Data.Eq.Unicode          ( (≡) )
 import Data.List.Unicode        ( (∈) )
 import Data.Function.Unicode    ( (∘) )
 import Data.Monoid.Unicode      ( (⊕) )
@@ -73,6 +76,7 @@ import Data.Default  ( def )
 import Data.MonoTraversable  ( Element
                              , MonoFoldable( ofoldl', ofoldl1Ex', ofoldMap
                                            , ofoldr, ofoldr1Ex, otoList )
+                             , MonoFunctor( omap )
                              )
 
 -- data-textual ------------------------
@@ -106,7 +110,10 @@ import Diagrams.Backend.SVG.CmdLine  ( B )
 
 -- lens --------------------------------
 
+import Control.Lens.Getter  ( (^.) )
+import Control.Lens.Iso     ( Iso, from, iso )
 import Control.Lens.Setter  ( (.~) )
+import Control.Lens.Type    ( Simple )
 
 -- mtl ---------------------------------
 
@@ -156,11 +163,29 @@ instance Traversable L4 where
 {- | A list of length 5. -}
 data L5 α = L5 α α α α α
 
+class AsL5 α where
+  l5     ∷ Simple Iso α (L5 (Element α))
+
+instance AsL5 (L5 α) where
+  l5     = id
+
 instance Functor L5 where
   fmap f (L5 a b c d e) = L5 (f a) (f b) (f c) (f d) (f e)
 
+type instance Element (L5 α) = α
+instance MonoFunctor (L5 α) where
+  omap f ls = fmap f ls
+
 instance Foldable L5 where
   foldr f x (L5 a b c d e) = foldr f x [a,b,c,d,e]
+
+instance MonoFoldable (L5 α) where
+  otoList (L5 a b c d e) = [a,b,c,d,e]
+  ofoldl'    f x         = foldl' f x ∘ otoList
+  ofoldr     f x         = foldr f x ∘ otoList
+  ofoldMap   f           = foldMap f ∘ otoList
+  ofoldr1Ex  f           = foldr1 f ∘ otoList
+  ofoldl1Ex' f           = foldl1 f ∘ otoList
 
 ------------------------------------------------------------
 
@@ -199,9 +224,22 @@ instance Foldable L8 where
 
 type AKey' = L5 AtreusLayerKey
 
+------------------------------------------------------------
+
 {- | KeySpec is a key specification - a set of key labels, one per each of 5
      layers. -}
-type KeySpec = L5 𝕊
+newtype KeySpecT = KeySpecT { unKeySpecT ∷ L5 𝕊 }
+  deriving (MonoFoldable, MonoFunctor)
+type instance Element KeySpecT = 𝕊
+type KeySpec = KeySpecT
+pattern KeySpec ∷ 𝕊 → 𝕊 → 𝕊 → 𝕊 → 𝕊 → KeySpecT
+pattern KeySpec l0 l1 l2 l3 l4 = KeySpecT (L5 l0 l1 l2 l3 l4)
+{-# COMPLETE KeySpec #-}
+
+instance AsL5 KeySpecT where
+  l5 = iso unKeySpecT KeySpecT
+
+------------------------------------------------------------
 
 type KeyCol = L4 KeySpec
 
@@ -224,66 +262,6 @@ getFonts ∷ (Read ν, RealFloat ν) ⇒ IO (Fonts ν)
 getFonts = do
   l ← SF.lin
   return $ Fonts { lin = l }
-
-------------------------------------------------------------
-
-class IsNull α where
-  isNull ∷ α → 𝔹
-
-------------------------------------------------------------
-
-data Key = Key (𝕄 𝕊) (𝕄 𝕊) (𝕄 𝕊) (𝕄 𝕊) (𝕄 𝕊)
-  deriving Show
-
---------------------
-
-instance IsNull Key where
-  isNull (Key a b c d e) = all isNothing [a,b,c,d,e]
-
---------------------
-
-type instance Element Key = 𝕄 𝕊
-
-instance MonoFoldable Key where
-  otoList (Key a b c d e) = [a,b,c,d,e]
-  ofoldl' f x = foldl' f x ∘ otoList
-  ofoldr f x = foldr f x ∘ otoList
-  ofoldMap f = foldMap f ∘ otoList
-  ofoldr1Ex f = foldr1 f ∘ otoList
-  ofoldl1Ex' f   = foldl1 f ∘ otoList
-
-instance Field1 Key Key (𝕄 𝕊) (𝕄 𝕊) where
-  _1 k (Key a b c d e) = k a <&> \ a' -> (Key a' b c d e)
-  {-# INLINE _1 #-}
-
-instance Field2 Key Key (𝕄 𝕊) (𝕄 𝕊) where
-  _2 k (Key a b c d e) = k b <&> \ b' -> (Key a b' c d e)
-  {-# INLINE _2 #-}
-
-instance Field3 Key Key (𝕄 𝕊) (𝕄 𝕊) where
-  _3 k (Key a b c d e) = k c <&> \ c' -> (Key a b c' d e)
-  {-# INLINE _3 #-}
-
-instance Field4 Key Key (𝕄 𝕊) (𝕄 𝕊) where
-  _4 k (Key a b c d e) = k d <&> \ d' -> (Key a b c d' e)
-  {-# INLINE _4 #-}
-
-instance Field5 Key Key (𝕄 𝕊) (𝕄 𝕊) where
-  _5 k (Key a b c d e) = k e <&> \ e' -> (Key a b c d e')
-  {-# INLINE _5 #-}
-  
-----------------------------------------
-
-type instance Element (Key,Key,Key,Key) = Key
-
-instance MonoFoldable (Key,Key,Key,Key) where
-  otoList (a,b,c,d) = [a,b,c,d]
-  ofoldl' f x = foldl' f x ∘ otoList
-  ofoldr f x = foldr f x ∘ otoList
-  ofoldMap f = foldMap f ∘ otoList
-  ofoldr1Ex f = foldr1 f ∘ otoList
-  ofoldl1Ex' f   = foldl1 f ∘ otoList
-
 --------------------------------------------------------------------------------
 
 {- | A width-one square with slightly rounded corners. -}
@@ -332,19 +310,28 @@ text' h  t c x y a = do
 
 {- | Create a diagram for a key with the given labels.  Return an empty diagram
      if all the labels are `Nothing` (as opposed to, say, the empty string). -}
-key ∷ MonadReader (Fonts 𝔻) μ ⇒ Key → μ DiagramB
-key k@(Key c tl tr bl br) = do
-  t0 ← text' 0.5  (fromMaybe "" c)  grey    0       0     centerXY
-  t1 ← text' 0.35 (fromMaybe "" tr) red   (-0.45) (-0.45) alignTR
-  t2 ← text' 0.35 (fromMaybe "" br) blue  (-0.45)   0.45  alignBR
-  t3 ← text' 0.35 (fromMaybe "" tl) green   0.45  (-0.45) alignTL
-  t4 ← text' 0.35 (fromMaybe "" bl) yellow  0.45    0.45  alignBL
+key' ∷ MonadReader (Fonts 𝔻) μ ⇒ KeySpec → μ DiagramB
+key' k@(KeySpec c tl tr bl br) = do
+  let -- kblank converts texts that should have no text - i.e., Blocked labels
+      -- and empty labels - to empty.
+      kblank "Blocked" = ""
+      kblank x         = x
+      isNull x = all (\ s → "" ≡ kblank s) (otoList x)
+  t0 ← text' 0.5  (kblank c)  grey    0       0     centerXY
+  t1 ← text' 0.35 (kblank tr) red   (-0.45) (-0.45) alignTR
+  t2 ← text' 0.35 (kblank br) blue  (-0.45)   0.45  alignBR
+  t3 ← text' 0.35 (kblank tl) green   0.45  (-0.45) alignTL
+  t4 ← text' 0.35 (kblank bl) yellow  0.45    0.45  alignBL
 
   return $ if isNull k
            then mempty
            else mconcat [ box1, t0, t1, t2, t3, t4 ]
 
 ----------------------------------------
+
+fmap3 ∷ (Functor ψ, Functor κ, Functor φ) ⇒
+        (α → β) → ψ (κ (φ α)) → ψ (κ (φ β))
+fmap3 = fmap ∘ fmap ∘ fmap
 
 fmap4 ∷ (Functor ψ, Functor κ, Functor φ, Functor ρ) ⇒
         (α → β) → ψ (κ (φ (ρ α))) → ψ (κ (φ (ρ β)))
@@ -357,10 +344,9 @@ group6Keys = join ∘ fmap (groupL6 AtreusWrongKeyCount) ∘ board
 {- | Read some layer files, group the keys together into 8 rows of 6 each. -}
 lrRows ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ Board
 lrRows fns =
-  fmap4 label (group6Keys fns) >>= \ case
+  fmap3 (^. from l5) (fmap4 label (group6Keys fns)) >>= \ case
     [l0,r0,l1,r1,l2,r2,l3,r3] → return $ L8 l0 r0 l1 r1 l2 r2 l3 r3
     rows                      → throwError $ AtreusWrongRowCount rows
-
 ----------------------------------------
 
 {- | Two (6-long) lists of (4-high) columns of keys, as diagrams; split into
@@ -385,8 +371,10 @@ lrCols fns = do
                                      <*> ZipList (toList r3)
 
 
-  l' ← mapM (mapM $ key ∘ mkKey) l
-  r' ← mapM (mapM $ key ∘ mkKey) r
+--  l' ← mapM (mapM $ key ∘ mkKey) l
+--  r' ← mapM (mapM $ key ∘ mkKey) r
+  l' ← mapM (mapM $ key') l
+  r' ← mapM (mapM $ key') r
   return (l',r')
 
 ------------------------------------------------------------
@@ -519,11 +507,3 @@ board fns =
                   <*> ZipList (otoList l2)
                   <*> ZipList (otoList l3)
                   <*> ZipList (otoList l4)) <$> decodes fns
-
-
-mkKey ∷ KeySpec → Key
-mkKey k = let (L5 a b c d e) = fmap (\ s → if s ∈ [ "", "Blocked" ]
-                                           then Nothing
-                                           else Just s)
-                                    k
-           in Key a b c d e
