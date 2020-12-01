@@ -18,9 +18,6 @@ module Atreus.LayoutDiagram
   ( atreus_layout )
 where
 
-import Control.Lens.Operators  ( (<&>) )
-import Control.Lens.Tuple
-
 --------------------------------------------------------------------------------
 
 import Prelude  ( Double, RealFloat, undefined )
@@ -41,7 +38,7 @@ import Data.Foldable           ( Foldable, all, foldl', foldl1, foldMap, foldr
 import Data.Function           ( ($), (&), flip, id )
 import Data.Functor            ( Functor( fmap ), (<$>) )
 import Data.List               ( repeat, replicate, reverse, take )
-import Data.Maybe              ( Maybe( Just, Nothing ), fromMaybe, isNothing )
+import Data.Maybe              ( Maybe( Just, Nothing ) )
 import Data.Monoid             ( Monoid, mconcat, mempty )
 import Data.Ord                ( (>) )
 import Data.String             ( String )
@@ -57,7 +54,6 @@ import Text.Show               ( Show, show )
 
 import Prelude.Unicode          ( (÷) )
 import Data.Eq.Unicode          ( (≡) )
-import Data.List.Unicode        ( (∈) )
 import Data.Function.Unicode    ( (∘) )
 import Data.Monoid.Unicode      ( (⊕) )
 import Numeric.Natural.Unicode  ( ℕ )
@@ -110,7 +106,7 @@ import Diagrams.Backend.SVG.CmdLine  ( B )
 
 -- lens --------------------------------
 
-import Control.Lens.Getter  ( (^.) )
+import Control.Lens.Getter  ( (^.), view )
 import Control.Lens.Iso     ( Iso, from, iso )
 import Control.Lens.Setter  ( (.~) )
 import Control.Lens.Type    ( Simple )
@@ -136,7 +132,6 @@ import qualified Text.Printer  as  P
 
 --------------------------------------------------------------------------------
 
-type 𝔹 = Bool
 type 𝔻 = Double
 type 𝕄 = Maybe
 type 𝕊 = String
@@ -222,36 +217,65 @@ instance Foldable L8 where
 
 ------------------------------------------------------------
 
-type AKey' = L5 AtreusLayerKey
+data AtreusKeySpec = AtreusKeySpec { keyCode ∷ ℕ
+                                   , label   ∷ 𝕊
+                                   , verbose ∷ 𝕄 𝕊
+                                   , extraLabel ∷ 𝕄 𝕊
+                                   }
+  deriving (Generic, Show)
+
+instance FromJSON AtreusKeySpec
+
+{- | A non-functioning-key, as represented in an atreus layer -}
+atreusLayerEmptyKey ∷ AtreusKeySpec
+atreusLayerEmptyKey = AtreusKeySpec 65535 "" (Just "Transparent") Nothing
 
 ------------------------------------------------------------
 
-{- | KeySpec is a key specification - a set of key labels, one per each of 5
-     layers. -}
-newtype KeySpecT = KeySpecT { unKeySpecT ∷ L5 𝕊 }
+{- | A collection of 5 `AtreusKeySpec`s; one for each layer. -}
+-- type AKey' = L5 AtreusKeySpec
+newtype AtreusKeySpecsT = AtreusKeySpecsT { unAtreusKeySpecsT ∷ L5 AtreusKeySpec }
+  deriving MonoFunctor
+type instance Element AtreusKeySpecsT = AtreusKeySpec
+type AtreusKeySpecs = AtreusKeySpecsT
+instance AsL5 AtreusKeySpecs where
+  l5 = iso unAtreusKeySpecsT AtreusKeySpecsT
+
+pattern AtreusKeySpecs ∷ AtreusKeySpec → AtreusKeySpec → AtreusKeySpec
+                       → AtreusKeySpec → AtreusKeySpec → AtreusKeySpecsT
+pattern AtreusKeySpecs l0 l1 l2 l3 l4 = AtreusKeySpecsT (L5 l0 l1 l2 l3 l4)
+{-# COMPLETE KeyLabels #-}
+
+------------------------------------------------------------
+
+{- | KeyLabels is a set of labels across 5 layers for a single key. -}
+newtype KeyLabelsT = KeyLabelsT { unKeyLabelsT ∷ L5 𝕊 }
   deriving (MonoFoldable, MonoFunctor)
-type instance Element KeySpecT = 𝕊
-type KeySpec = KeySpecT
-pattern KeySpec ∷ 𝕊 → 𝕊 → 𝕊 → 𝕊 → 𝕊 → KeySpecT
-pattern KeySpec l0 l1 l2 l3 l4 = KeySpecT (L5 l0 l1 l2 l3 l4)
-{-# COMPLETE KeySpec #-}
+type instance Element KeyLabelsT = 𝕊
+type KeyLabels = KeyLabelsT
+pattern KeyLabels ∷ 𝕊 → 𝕊 → 𝕊 → 𝕊 → 𝕊 → KeyLabelsT
+pattern KeyLabels l0 l1 l2 l3 l4 = KeyLabelsT (L5 l0 l1 l2 l3 l4)
+{-# COMPLETE KeyLabels #-}
 
-instance AsL5 KeySpecT where
-  l5 = iso unKeySpecT KeySpecT
+instance AsL5 KeyLabelsT where
+  l5 = iso unKeyLabelsT KeyLabelsT
 
 ------------------------------------------------------------
 
-type KeyCol = L4 KeySpec
+type KeyCol = L4 KeyLabels
 
-type KeyRow = L6 KeySpec
+type KeyRow = L6 KeyLabels
 
 type Board = L8 KeyRow
 
-newtype AtreusBoardT = AtreusBoardT (L5 AtreusLayer)
-type AtreusBoard = AtreusBoardT
-pattern AtreusBoard ∷ AtreusLayer → AtreusLayer → AtreusLayer
-                    → AtreusLayer → AtreusLayer → AtreusBoardT
-pattern AtreusBoard l0 l1 l2 l3 l4 = AtreusBoardT (L5 l0 l1 l2 l3 l4)
+------------------------------------------------------------
+
+{-| Specification of a full atreus keyboard, as 5x AtreusLayerSpec. -}
+newtype AtreusBoardSpecT = AtreusBoardSpecT (L5 AtreusLayerSpec)
+type AtreusBoardSpec = AtreusBoardSpecT
+pattern AtreusBoardSpec ∷ AtreusLayerSpec → AtreusLayerSpec → AtreusLayerSpec
+                        → AtreusLayerSpec → AtreusLayerSpec → AtreusBoardSpecT
+pattern AtreusBoardSpec l0 l1 l2 l3 l4 = AtreusBoardSpecT (L5 l0 l1 l2 l3 l4)
 
 ------------------------------------------------------------
 
@@ -310,8 +334,8 @@ text' h  t c x y a = do
 
 {- | Create a diagram for a key with the given labels.  Return an empty diagram
      if all the labels are `Nothing` (as opposed to, say, the empty string). -}
-key' ∷ MonadReader (Fonts 𝔻) μ ⇒ KeySpec → μ DiagramB
-key' k@(KeySpec c tl tr bl br) = do
+key ∷ MonadReader (Fonts 𝔻) μ ⇒ KeyLabels → μ DiagramB
+key k@(KeyLabels c tl tr bl br) = do
   let -- kblank converts texts that should have no text - i.e., Blocked labels
       -- and empty labels - to empty.
       kblank "Blocked" = ""
@@ -338,15 +362,17 @@ fmap4 ∷ (Functor ψ, Functor κ, Functor φ, Functor ρ) ⇒
 fmap4 = fmap ∘ fmap ∘ fmap ∘ fmap
 
 {- | Group keys into 6s. -}
-group6Keys ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ [L6 AKey']
+group6Keys ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ [L6 AtreusKeySpecs]
 group6Keys = join ∘ fmap (groupL6 AtreusWrongKeyCount) ∘ board
 
 {- | Read some layer files, group the keys together into 8 rows of 6 each. -}
 lrRows ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ Board
-lrRows fns =
-  fmap3 (^. from l5) (fmap4 label (group6Keys fns)) >>= \ case
+lrRows fns = 
+
+  fmap3 (^. from l5) (fmap4 label (fmap3 (view l5) $ group6Keys fns)) >>= \ case
     [l0,r0,l1,r1,l2,r2,l3,r3] → return $ L8 l0 r0 l1 r1 l2 r2 l3 r3
     rows                      → throwError $ AtreusWrongRowCount rows
+
 ----------------------------------------
 
 {- | Two (6-long) lists of (4-high) columns of keys, as diagrams; split into
@@ -373,8 +399,8 @@ lrCols fns = do
 
 --  l' ← mapM (mapM $ key ∘ mkKey) l
 --  r' ← mapM (mapM $ key ∘ mkKey) r
-  l' ← mapM (mapM $ key') l
-  r' ← mapM (mapM $ key') r
+  l' ← mapM (mapM $ key) l
+  r' ← mapM (mapM $ key) r
   return (l',r')
 
 ------------------------------------------------------------
@@ -389,8 +415,8 @@ atreus_layout = do
                                                   hPutStrLn stderr (toString e)
                                                   exitWith (ExitFailure 255)
 
-    let (L6 l0 l1 l2 l3 l4 l5) = l
-        (L6 r0 r1 r2 r3 r4 r5) = r
+    let (L6 lt0 lt1 lt2 lt3 lt4 lt5) = l
+        (L6 rt0 rt1 rt2 rt3 rt4 rt5) = r
 
     let lrot = -10@@deg
         rrot =  10@@deg
@@ -400,55 +426,32 @@ atreus_layout = do
 
     return $ cat' (V2 1 0)
                   (with & catMethod .~ Distrib & sep .~ (1.2 ÷ cosA lrot))
-                  [ place l0 0      lrot
-                  , place l1 0      lrot
-                  , place l2 0      lrot
-                  , place l3 (-0.5) lrot
-                  , place l4 (-1.0) lrot
-                  , place l5 (-1.0) lrot
-                  , place r0 (-1.0) rrot
-                  , place r1 (-1.0) rrot
-                  , place r2 (-0.5) rrot
-                  , place r3 0      rrot
-                  , place r4 0      rrot
-                  , place r5 0      rrot
+                  [ place lt0 0      lrot
+                  , place lt1 0      lrot
+                  , place lt2 0      lrot
+                  , place lt3 (-0.5) lrot
+                  , place lt4 (-1.0) lrot
+                  , place lt5 (-1.0) lrot
+                  , place rt0 (-1.0) rrot
+                  , place rt1 (-1.0) rrot
+                  , place rt2 (-0.5) rrot
+                  , place rt3 0      rrot
+                  , place rt4 0      rrot
+                  , place rt5 0      rrot
                   ]
 
 -- that's all, folks! ----------------------------------------------------------
 
-data AtreusLayerKey = AtreusLayerKey { keyCode ∷ ℕ
-                                     , label   ∷ 𝕊
-                                     , verbose ∷ 𝕄 𝕊
-                                     , extraLabel ∷ 𝕄 𝕊
-                                     }
-  deriving (Generic, Show)
+newtype AtreusLayerSpec = AtreusLayerSpec { keymap ∷ [AtreusKeySpec] }
+  deriving (Generic, MonoFoldable, Show)
 
-instance FromJSON AtreusLayerKey
+instance FromJSON AtreusLayerSpec
 
-{- | A non-functioning-key, as represented in an atreus layer -}
-atreusLayerEmptyKey ∷ AtreusLayerKey
-atreusLayerEmptyKey = AtreusLayerKey 65535 "" (Just "Transparent") Nothing
-
-------------------------------------------------------------
-
-data AtreusLayer = AtreusLayer { keymap ∷ [AtreusLayerKey] }
-  deriving (Generic, Show)
-
-instance FromJSON AtreusLayer
-
-type instance Element AtreusLayer = AtreusLayerKey
-
-instance MonoFoldable AtreusLayer where
-  otoList (AtreusLayer ks) = ks
-  ofoldl' f x = foldl' f x ∘ otoList
-  ofoldr f x = foldr f x ∘ otoList
-  ofoldMap f = foldMap f ∘ otoList
-  ofoldr1Ex f = foldr1 f ∘ otoList
-  ofoldl1Ex' f   = foldl1 f ∘ otoList
+type instance Element AtreusLayerSpec = AtreusKeySpec
 
 {- | An empty atreus layer -}
-atreusLayerEmpty ∷ AtreusLayer
-atreusLayerEmpty = AtreusLayer $ replicate 48 atreusLayerEmptyKey
+atreusLayerEmpty ∷ AtreusLayerSpec
+atreusLayerEmpty = AtreusLayerSpec $ replicate 48 atreusLayerEmptyKey
 
 ------------------------------------------------------------
 
@@ -458,21 +461,21 @@ atreusLayerEmpty = AtreusLayer $ replicate 48 atreusLayerEmptyKey
      If more than 5 layers are provided, will throw an `AtreusTooManyLayers`
      exception.
  -}
-boardFromLayers ∷ MonadError AtreusLayoutE η ⇒ [AtreusLayer] → η AtreusBoard
+boardFromLayers ∷ MonadError AtreusLayoutE η ⇒ [AtreusLayerSpec] → η AtreusBoardSpec
 boardFromLayers ls =
   if length ls > 5
   then throwError $ AtreusTooManyLayers ls
   else let [l0,l1,l2,l3,l4] = take 5 $ ls ⊕ repeat atreusLayerEmpty
-        in return $ AtreusBoard l0 l1 l2 l3 l4
+        in return $ AtreusBoardSpec l0 l1 l2 l3 l4
 
-decode ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ FilePath → μ AtreusLayer
+decode ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ FilePath → μ AtreusLayerSpec
 decode = let ethrow = either (throwError ∘ AtreusFailedDecodeE) return
-           in join ∘ liftIO ∘ fmap ethrow ∘ eitherDecodeFileStrict' @AtreusLayer
+           in join ∘ liftIO ∘ fmap ethrow ∘ eitherDecodeFileStrict' @AtreusLayerSpec
 
 filenames ∷ [FilePath]
 filenames = fmap ("/home/martyn/rc/atreus/default-layout/layer" ⊕) ["0","1","2"]
 
-decodes ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ AtreusBoard
+decodes ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ AtreusBoardSpec
 decodes fns = mapM decode fns >>= boardFromLayers
 
 groupL6 ∷ MonadError ε η ⇒ ([α] → ε) → [α] → η [L6 α]
@@ -481,10 +484,10 @@ groupL6 err (a:b:c:d:e:f:xs) = (L6 a b c d e f :) <$> (groupL6 err xs)
 groupL6 err xs               = throwError $ err xs
 
 data AtreusLayoutE = AtreusFailedDecodeE 𝕊
-                   | AtreusWrongRowCount [L6 KeySpec]
-                   | AtreusWrongKeyCount [AKey']
+                   | AtreusWrongRowCount [L6 KeyLabels]
+                   | AtreusWrongKeyCount [AtreusKeySpecs]
                    | AtreusWrongColumnCount [KeyCol]
-                   | AtreusTooManyLayers [AtreusLayer]
+                   | AtreusTooManyLayers [AtreusLayerSpec]
 
 instance Printable AtreusLayoutE where
   print (AtreusFailedDecodeE s) = P.string $ "layer decode failed: " ⊕ s
@@ -499,11 +502,13 @@ instance Printable AtreusLayoutE where
 
 {- | A list of keys, over 5 layers.  Only keys that are represented on all
      layers are returned. -}
-board ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ [AKey']
-board fns =
-    (\ (AtreusBoard l0 l1 l2 l3 l4) → 
-      toList $ L5 <$> ZipList (otoList l0)
+board ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ [AtreusKeySpecs]
+board fns = -- undefined
+
+    (\ (AtreusBoardSpec l0 l1 l2 l3 l4) → 
+      toList $ AtreusKeySpecs <$> ZipList (otoList l0)
                   <*> ZipList (otoList l1)
                   <*> ZipList (otoList l2)
                   <*> ZipList (otoList l3)
                   <*> ZipList (otoList l4)) <$> decodes fns
+
