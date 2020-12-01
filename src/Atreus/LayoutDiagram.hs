@@ -158,16 +158,17 @@ instance Traversable L4 where
 {- | A list of length 5. -}
 data L5 α = L5 α α α α α
 
+type instance Element (L5 α) = α
+
 class AsL5 α where
-  l5     ∷ Simple Iso α (L5 (Element α))
+  l5 ∷ Simple Iso α (L5 (Element α))
 
 instance AsL5 (L5 α) where
-  l5     = id
+  l5 = id
 
 instance Functor L5 where
   fmap f (L5 a b c d e) = L5 (f a) (f b) (f c) (f d) (f e)
 
-type instance Element (L5 α) = α
 instance MonoFunctor (L5 α) where
   omap f ls = fmap f ls
 
@@ -187,10 +188,13 @@ instance MonoFoldable (L5 α) where
 {- | A list of length 6. -}
 data L6 α = L6 α α α α α α
 
-instance Traversable L6 where
-  {-# INLINE traverse #-} -- so that traverse can fuse
-  traverse g (L6 a b c d e f) =
-    L6 <$> g a <*> g b <*> g c <*> g d <*> g e <*> g f
+type instance Element (L6 α) = α
+
+class AsL6 α where
+  l6 ∷ Simple Iso α (L6 (Element α))
+
+instance AsL6 (L6 α) where
+  l6 = id
 
 instance Functor L6 where
   fmap g (L6 a b c d e f) = L6 (g a) (g b) (g c) (g d) (g e) (g f)
@@ -198,10 +202,23 @@ instance Functor L6 where
 instance Foldable L6 where
   foldr g x (L6 a b c d e f) = foldr g x [a,b,c,d,e,f]
 
+instance Traversable L6 where
+  {-# INLINE traverse #-} -- so that traverse can fuse
+  traverse g (L6 a b c d e f) =
+    L6 <$> g a <*> g b <*> g c <*> g d <*> g e <*> g f
+
 ------------------------------------------------------------
 
 {- | A list of length 8. -}
 data L8 α = L8 α α α α α α α α
+
+type instance Element (L8 α) = α
+
+class AsL8 α where
+  l8 ∷ Simple Iso α (L8 (Element α))
+
+instance AsL8 (L8 α) where
+  l8 = id
 
 instance Traversable L8 where
   {-# INLINE traverse #-} -- so that traverse can fuse
@@ -233,8 +250,8 @@ atreusLayerEmptyKey = AtreusKeySpec 65535 "" (Just "Transparent") Nothing
 ------------------------------------------------------------
 
 {- | A collection of 5 `AtreusKeySpec`s; one for each layer. -}
--- type AKey' = L5 AtreusKeySpec
-newtype AtreusKeySpecsT = AtreusKeySpecsT { unAtreusKeySpecsT ∷ L5 AtreusKeySpec }
+newtype AtreusKeySpecsT =
+  AtreusKeySpecsT { unAtreusKeySpecsT ∷ L5 AtreusKeySpec }
   deriving MonoFunctor
 type instance Element AtreusKeySpecsT = AtreusKeySpec
 type AtreusKeySpecs = AtreusKeySpecsT
@@ -244,14 +261,16 @@ instance AsL5 AtreusKeySpecs where
 pattern AtreusKeySpecs ∷ AtreusKeySpec → AtreusKeySpec → AtreusKeySpec
                        → AtreusKeySpec → AtreusKeySpec → AtreusKeySpecsT
 pattern AtreusKeySpecs l0 l1 l2 l3 l4 = AtreusKeySpecsT (L5 l0 l1 l2 l3 l4)
-{-# COMPLETE KeyLabels #-}
+{-# COMPLETE AtreusKeySpecs #-}
 
 ------------------------------------------------------------
 
-{- | KeyLabels is a set of labels across 5 layers for a single key. -}
+{- | A set of labels across 5 layers for a single key. -}
 newtype KeyLabelsT = KeyLabelsT { unKeyLabelsT ∷ L5 𝕊 }
   deriving (MonoFoldable, MonoFunctor)
+
 type instance Element KeyLabelsT = 𝕊
+
 type KeyLabels = KeyLabelsT
 pattern KeyLabels ∷ 𝕊 → 𝕊 → 𝕊 → 𝕊 → 𝕊 → KeyLabelsT
 pattern KeyLabels l0 l1 l2 l3 l4 = KeyLabelsT (L5 l0 l1 l2 l3 l4)
@@ -262,9 +281,17 @@ instance AsL5 KeyLabelsT where
 
 ------------------------------------------------------------
 
-type KeyCol = L4 KeyLabels
+{- | A row of 6 `KeyLabel`s -}
+newtype KeyRow = KeyRow { unKeyRow ∷ L6 KeyLabels }
 
-type KeyRow = L6 KeyLabels
+type instance Element KeyRow = KeyLabels
+
+instance AsL6 KeyRow where
+  l6 = iso unKeyRow KeyRow
+
+------------------------------------------------------------
+
+type KeyCol = L4 KeyLabels
 
 type Board = L8 KeyRow
 
@@ -370,7 +397,7 @@ lrRows ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ Board
 lrRows fns = 
 
   fmap3 (^. from l5) (fmap4 label (fmap3 (view l5) $ group6Keys fns)) >>= \ case
-    [l0,r0,l1,r1,l2,r2,l3,r3] → return $ L8 l0 r0 l1 r1 l2 r2 l3 r3
+    [l0,r0,l1,r1,l2,r2,l3,r3] → return $ KeyRow <$> L8 l0 r0 l1 r1 l2 r2 l3 r3
     rows                      → throwError $ AtreusWrongRowCount rows
 
 ----------------------------------------
@@ -381,7 +408,7 @@ lrRows fns =
 lrCols ∷ (MonadIO μ, MonadError AtreusLayoutE μ, MonadReader (Fonts 𝔻) μ) ⇒
             [FilePath] → μ (L6 (L4 DiagramB),L6 (L4 DiagramB))
 lrCols fns = do
-  L8 l0 r0 l1 r1 l2 r2 l3 r3 ← lrRows fns
+  L8 l0 r0 l1 r1 l2 r2 l3 r3 ← fmap (view l6) <$> lrRows fns
 
   let kcol [x0,x1,x2,x3,x4,x5] = return $ L6 x0 x1 x2 x3 x4 x5
       kcol xs                  = throwError $ AtreusWrongColumnCount xs
