@@ -207,6 +207,14 @@ instance Traversable L6 where
   traverse g (L6 a b c d e f) =
     L6 <$> g a <*> g b <*> g c <*> g d <*> g e <*> g f
 
+instance MonoFoldable (L6 α) where
+  otoList (L6 a b c d e f) = [a,b,c,d,e,f]
+  ofoldl'    f x           = foldl' f x ∘ otoList
+  ofoldr     f x           = foldr f x ∘ otoList
+  ofoldMap   f             = foldMap f ∘ otoList
+  ofoldr1Ex  f             = foldr1 f ∘ otoList
+  ofoldl1Ex' f             = foldl1 f ∘ otoList
+
 ------------------------------------------------------------
 
 {- | A list of length 8. -}
@@ -283,6 +291,7 @@ instance AsL5 KeyLabelsT where
 
 {- | A row of 6 `KeyLabel`s -}
 newtype KeyRow = KeyRow { unKeyRow ∷ L6 KeyLabels }
+  deriving MonoFoldable
 
 type instance Element KeyRow = KeyLabels
 
@@ -291,9 +300,23 @@ instance AsL6 KeyRow where
 
 ------------------------------------------------------------
 
-type KeyCol = L4 KeyLabels
+-- type Board = L8 KeyRow
+newtype BoardT = BoardT { unBoard ∷ L8 KeyRow }
 
-type Board = L8 KeyRow
+type instance Element BoardT = KeyRow
+
+type Board = BoardT
+pattern Board ∷ KeyRow → KeyRow → KeyRow → KeyRow → KeyRow → KeyRow → KeyRow
+              → KeyRow → BoardT
+pattern Board r0 r1 r2 r3 r4 r5 r6 r7 = BoardT (L8 r0 r1 r2 r3 r4 r5 r6 r7)
+{-# COMPLETE Board #-}
+
+instance AsL8 Board where
+  l8 = iso unBoard BoardT
+
+------------------------------------------------------------
+
+type KeyCol = L4 KeyLabels
 
 ------------------------------------------------------------
 
@@ -394,10 +417,10 @@ group6Keys = join ∘ fmap (groupL6 AtreusWrongKeyCount) ∘ board
 
 {- | Read some layer files, group the keys together into 8 rows of 6 each. -}
 lrRows ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ Board
-lrRows fns = 
+lrRows fns =
 
-  fmap3 (^. from l5) (fmap4 label (fmap3 (view l5) $ group6Keys fns)) >>= \ case
-    [l0,r0,l1,r1,l2,r2,l3,r3] → return $ KeyRow <$> L8 l0 r0 l1 r1 l2 r2 l3 r3
+  fmap3 (view $ from l5) (fmap4 label (fmap3 (view l5) $ group6Keys fns)) >>= \ case
+    [l0,r0,l1,r1,l2,r2,l3,r3] → return $ (view $ from l8) $ KeyRow <$> L8 l0 r0 l1 r1 l2 r2 l3 r3
     rows                      → throwError $ AtreusWrongRowCount rows
 
 ----------------------------------------
@@ -408,20 +431,20 @@ lrRows fns =
 lrCols ∷ (MonadIO μ, MonadError AtreusLayoutE μ, MonadReader (Fonts 𝔻) μ) ⇒
             [FilePath] → μ (L6 (L4 DiagramB),L6 (L4 DiagramB))
 lrCols fns = do
-  L8 l0 r0 l1 r1 l2 r2 l3 r3 ← fmap (view l6) <$> lrRows fns
+  L8 l0 r0 l1 r1 l2 r2 l3 r3 ← fmap (view l6) <$> view l8 <$> (lrRows fns)
 
   let kcol [x0,x1,x2,x3,x4,x5] = return $ L6 x0 x1 x2 x3 x4 x5
       kcol xs                  = throwError $ AtreusWrongColumnCount xs
 
-  l ∷ L6 KeyCol ← kcol $ toList $ L4 <$> ZipList (toList l0)
-                                     <*> ZipList (toList l1)
-                                     <*> ZipList (toList l2)
-                                     <*> ZipList (toList l3)
+  l ∷ L6 KeyCol ← kcol $ toList $ L4 <$> ZipList (otoList l0)
+                                     <*> ZipList (otoList l1)
+                                     <*> ZipList (otoList l2)
+                                     <*> ZipList (otoList l3)
 
-  r ∷ L6 KeyCol ← kcol $ toList $ L4 <$> ZipList (toList r0)
-                                     <*> ZipList (toList r1)
-                                     <*> ZipList (toList r2)
-                                     <*> ZipList (toList r3)
+  r ∷ L6 KeyCol ← kcol $ toList $ L4 <$> ZipList (otoList r0)
+                                     <*> ZipList (otoList r1)
+                                     <*> ZipList (otoList r2)
+                                     <*> ZipList (otoList r3)
 
 
 --  l' ← mapM (mapM $ key ∘ mkKey) l
