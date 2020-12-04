@@ -49,7 +49,7 @@ cabal-version:       >=1.10
 library
   ghc-options:        -W -Wall -fhelpful-errors
   -- Modules exported by the library.
-  exposed-modules:     Atreus.LayoutDiagram
+  exposed-modules:     Atreus.LayoutDiagram, Atreus.Types
                        FixedList
 
   -- modules included in this library but not exported.
