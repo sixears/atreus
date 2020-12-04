@@ -28,8 +28,8 @@ import Data.Aeson  ( FromJSON, eitherDecodeFileStrict' )
 
 -- base --------------------------------
 
-import Control.Applicative     ( Applicative( (<*>) ), ZipList( ZipList ) )
-import Control.Monad           ( (>>=), join, mapM, return )
+import Control.Applicative     ( Applicative( pure, (<*>) ), ZipList( ZipList ) )
+import Control.Monad           ( (>>=), join, mapM, return, sequence )
 import Control.Monad.IO.Class  ( MonadIO, liftIO )
 import Data.Bool               ( Bool( False ) )
 import Data.Either             ( Either( Left, Right ), either )
@@ -73,6 +73,7 @@ import Data.MonoTraversable  ( Element
                              , MonoFoldable( ofoldl', ofoldl1Ex', ofoldMap
                                            , ofoldr, ofoldr1Ex, otoList )
                              , MonoFunctor( omap )
+                             , MonoTraversable( otraverse, omapM )
                              )
 
 -- data-textual ------------------------
@@ -143,8 +144,14 @@ type DiagramB = Diagram B
 {- | A list of length 4. -}
 data L4 α = L4 α α α α
 
+type instance Element (L4 α) = α
+
 instance Functor L4 where
   fmap f (L4 a b c d) = L4 (f a) (f b) (f c) (f d)
+
+instance Applicative L4 where
+  pure a = L4 a a a a
+  L4 f0 f1 f2 f3 <*> L4 a0 a1 a2 a3 = L4 (f0 a0) (f1 a1) (f2 a2) (f3 a3)
 
 instance Foldable L4 where
   foldr f x (L4 a b c d) = foldr f x [a,b,c,d]
@@ -152,6 +159,26 @@ instance Foldable L4 where
 instance Traversable L4 where
   {-# INLINE traverse #-} -- so that traverse can fuse
   traverse f (L4 a b c d) = L4 <$> f a <*> f b <*> f c <*> f d
+
+instance MonoFunctor (L4 α) where
+  omap f ls = fmap f ls
+
+instance MonoFoldable (L4 α) where
+  otoList (L4 a b c d) = [a,b,c,d]
+  ofoldl'    f x       = foldl' f x ∘ otoList
+  ofoldr     f x       = foldr f x ∘ otoList
+  ofoldMap   f         = foldMap f ∘ otoList
+  ofoldr1Ex  f         = foldr1 f ∘ otoList
+  ofoldl1Ex' f         = foldl1 f ∘ otoList
+
+instance MonoTraversable (L4 α) where
+  omapM = otraverse
+
+class AsL4 α where
+  l4 ∷ Simple Iso α (L4 (Element α))
+
+instance AsL4 (L4 α) where
+  l4 = id
 
 ------------------------------------------------------------
 
@@ -198,6 +225,11 @@ instance AsL6 (L6 α) where
 
 instance Functor L6 where
   fmap g (L6 a b c d e f) = L6 (g a) (g b) (g c) (g d) (g e) (g f)
+
+instance Applicative L6 where
+  pure a = L6 a a a a a a
+  L6 f0 f1 f2 f3 f4 f5 <*> L6 a0 a1 a2 a3 a4 a5 =
+    L6 (f0 a0) (f1 a1) (f2 a2) (f3 a3) (f4 a4) (f5 a5)
 
 instance Foldable L6 where
   foldr g x (L6 a b c d e f) = foldr g x [a,b,c,d,e,f]
@@ -300,8 +332,7 @@ instance AsL6 KeyRow where
 
 ------------------------------------------------------------
 
--- type Board = L8 KeyRow
-newtype BoardT = BoardT { unBoard ∷ L8 KeyRow }
+newtype BoardT = BoardT { unBoardT ∷ L8 KeyRow }
 
 type instance Element BoardT = KeyRow
 
@@ -312,11 +343,28 @@ pattern Board r0 r1 r2 r3 r4 r5 r6 r7 = BoardT (L8 r0 r1 r2 r3 r4 r5 r6 r7)
 {-# COMPLETE Board #-}
 
 instance AsL8 Board where
-  l8 = iso unBoard BoardT
+  l8 = iso unBoardT BoardT
 
 ------------------------------------------------------------
 
-type KeyCol = L4 KeyLabels
+newtype KeyColT = KeyColT { unKeyColT ∷ L4 KeyLabels }
+  deriving (MonoFoldable, MonoFunctor)
+
+type KeyCol = KeyColT
+
+type instance Element KeyCol = KeyLabels
+
+instance MonoTraversable KeyCol where
+  otraverse f (KeyColT ls) = KeyColT <$> traverse f ls
+--  omapM     = otraverse
+  
+pattern KeyCol ∷ KeyLabels → KeyLabels → KeyLabels → KeyLabels → KeyCol
+
+pattern KeyCol k0 k1 k2 k3 = KeyColT (L4 k0 k1 k2 k3)
+{-# COMPLETE Board #-}
+
+instance AsL4 KeyColT where
+  l4 = iso unKeyColT KeyColT
 
 ------------------------------------------------------------
 
@@ -431,26 +479,14 @@ lrRows fns =
 lrCols ∷ (MonadIO μ, MonadError AtreusLayoutE μ, MonadReader (Fonts 𝔻) μ) ⇒
             [FilePath] → μ (L6 (L4 DiagramB),L6 (L4 DiagramB))
 lrCols fns = do
-  L8 l0 r0 l1 r1 l2 r2 l3 r3 ← fmap (view l6) <$> view l8 <$> (lrRows fns)
+  -- each of l0,r0,…,r3 is ∷ L6 KeyLabels
+  L8 l0 r0 l1 r1 l2 r2 l3 r3 ← fmap (view l6) <$> view l8 <$> lrRows fns
 
-  let kcol [x0,x1,x2,x3,x4,x5] = return $ L6 x0 x1 x2 x3 x4 x5
-      kcol xs                  = throwError $ AtreusWrongColumnCount xs
+  let l ∷ L6 KeyCol = KeyCol <$> l0 <*> l1 <*> l2 <*> l3
+      r ∷ L6 KeyCol = KeyCol <$> r0 <*> r1 <*> r2 <*> r3
 
-  l ∷ L6 KeyCol ← kcol $ toList $ L4 <$> ZipList (otoList l0)
-                                     <*> ZipList (otoList l1)
-                                     <*> ZipList (otoList l2)
-                                     <*> ZipList (otoList l3)
-
-  r ∷ L6 KeyCol ← kcol $ toList $ L4 <$> ZipList (otoList r0)
-                                     <*> ZipList (otoList r1)
-                                     <*> ZipList (otoList r2)
-                                     <*> ZipList (otoList r3)
-
-
---  l' ← mapM (mapM $ key ∘ mkKey) l
---  r' ← mapM (mapM $ key ∘ mkKey) r
-  l' ← mapM (mapM $ key) l
-  r' ← mapM (mapM $ key) r
+  l' ← sequence $ fmap (mapM key ∘ view l4) l
+  r' ← sequence $ fmap (mapM key ∘ view l4) r
   return (l',r')
 
 ------------------------------------------------------------
@@ -553,8 +589,7 @@ instance Printable AtreusLayoutE where
 {- | A list of keys, over 5 layers.  Only keys that are represented on all
      layers are returned. -}
 board ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ [AtreusKeySpecs]
-board fns = -- undefined
-
+board fns =
     (\ (AtreusBoardSpec l0 l1 l2 l3 l4) → 
       toList $ AtreusKeySpecs <$> ZipList (otoList l0)
                   <*> ZipList (otoList l1)
