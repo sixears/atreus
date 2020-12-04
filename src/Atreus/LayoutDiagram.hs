@@ -20,7 +20,7 @@ where
 
 --------------------------------------------------------------------------------
 
-import Prelude  ( Double, RealFloat, undefined )
+import Prelude  ( Double, RealFloat )
 
 -- aeson -------------------------------
 
@@ -28,14 +28,13 @@ import Data.Aeson  ( FromJSON, eitherDecodeFileStrict' )
 
 -- base --------------------------------
 
-import Control.Applicative     ( Applicative( pure, (<*>) ), ZipList( ZipList ) )
+import Control.Applicative     ( Applicative( (<*>) ), ZipList( ZipList ) )
 import Control.Monad           ( (>>=), join, mapM, return, sequence )
 import Control.Monad.IO.Class  ( MonadIO, liftIO )
 import Data.Bool               ( Bool( False ) )
 import Data.Either             ( Either( Left, Right ), either )
-import Data.Foldable           ( Foldable, all, foldl', foldl1, foldMap, foldr
-                               , foldr1, length, toList )
-import Data.Function           ( ($), (&), flip, id )
+import Data.Foldable           ( all, length, toList )
+import Data.Function           ( ($), (&), flip )
 import Data.Functor            ( Functor( fmap ), (<$>) )
 import Data.List               ( repeat, replicate, reverse, take )
 import Data.Maybe              ( Maybe( Just, Nothing ) )
@@ -69,12 +68,8 @@ import Data.Default  ( def )
 
 -- data-monotraversable ----------------
 
-import Data.MonoTraversable  ( Element
-                             , MonoFoldable( ofoldl', ofoldl1Ex', ofoldMap
-                                           , ofoldr, ofoldr1Ex, otoList )
-                             , MonoFunctor( omap )
-                             , MonoTraversable( otraverse, omapM )
-                             )
+import Data.MonoTraversable  ( Element, MonoFoldable( otoList ), MonoFunctor
+                             , MonoTraversable( otraverse ) )
 
 -- data-textual ------------------------
 
@@ -107,10 +102,9 @@ import Diagrams.Backend.SVG.CmdLine  ( B )
 
 -- lens --------------------------------
 
-import Control.Lens.Getter  ( (^.), view )
-import Control.Lens.Iso     ( Iso, from, iso )
+import Control.Lens.Getter  ( view )
+import Control.Lens.Iso     ( from, iso )
 import Control.Lens.Setter  ( (.~) )
-import Control.Lens.Type    ( Simple )
 
 -- mtl ---------------------------------
 
@@ -145,9 +139,6 @@ type 𝕄 = Maybe
 type 𝕊 = String
 
 type DiagramB = Diagram B
-
-------------------------------------------------------------
-
 
 ------------------------------------------------------------
 
@@ -427,8 +418,9 @@ boardFromLayers ∷ MonadError AtreusLayoutE η ⇒ [AtreusLayerSpec] → η Atr
 boardFromLayers ls =
   if length ls > 5
   then throwError $ AtreusTooManyLayers ls
-  else let [l0,l1,l2,l3,l4] = take 5 $ ls ⊕ repeat atreusLayerEmpty
-        in return $ AtreusBoardSpec l0 l1 l2 l3 l4
+  else let [layer0,layer1,layer2,layer3,layer4] =
+             take 5 $ ls ⊕ repeat atreusLayerEmpty
+        in return $ AtreusBoardSpec layer0 layer1 layer2 layer3 layer4
 
 decode ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ FilePath → μ AtreusLayerSpec
 decode = let ethrow = either (throwError ∘ AtreusFailedDecodeE) return
@@ -466,10 +458,10 @@ instance Printable AtreusLayoutE where
      layers are returned. -}
 board ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ [AtreusKeySpecs]
 board fns =
-    (\ (AtreusBoardSpec l0 l1 l2 l3 l4) → 
-      toList $ AtreusKeySpecs <$> ZipList (otoList l0)
-                  <*> ZipList (otoList l1)
-                  <*> ZipList (otoList l2)
-                  <*> ZipList (otoList l3)
-                  <*> ZipList (otoList l4)) <$> decodes fns
+    (\ (AtreusBoardSpec layer0 layer1 layer2 layer3 layer4) → 
+      toList $ AtreusKeySpecs <$> ZipList (otoList layer0)
+                              <*> ZipList (otoList layer1)
+                              <*> ZipList (otoList layer2)
+                              <*> ZipList (otoList layer3)
+                              <*> ZipList (otoList layer4)) <$> decodes fns
 
