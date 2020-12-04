@@ -50,6 +50,7 @@ library
   ghc-options:        -W -Wall -fhelpful-errors
   -- Modules exported by the library.
   exposed-modules:     Atreus.LayoutDiagram
+                       FixedList
 
   -- modules included in this library but not exported.
   other-modules:     
