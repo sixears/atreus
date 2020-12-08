@@ -9,11 +9,11 @@ module Atreus.Types
   , AtreusKeySpec( label )
   , AtreusKeySpecsT( AtreusKeySpecs ), AtreusKeySpecs
   , AtreusLayerSpec
-  , BoardT( Board ), Board
+  , BoardT( BoardT, Board ), Board
   , KeyColT( KeyCol ), KeyCol
   , KeyLabelsT( KeyLabels ), KeyLabels
   , KeyRow( KeyRow )
-  , atreusLayerEmpty, atreusLayerEmptyKey
+  , atreusLayerEmpty, atreusLayerEmptyKey, readBoard
   )
 where
 
@@ -24,7 +24,7 @@ import Data.Aeson  ( FromJSON )
 -- base --------------------------------
 
 import Data.Function     ( ($) )
-import Data.Functor      ( (<$>) )
+import Data.Functor      ( (<$>), fmap )
 import Data.List         ( replicate )
 import Data.Maybe        ( Maybe( Just, Nothing ) )
 import Data.String       ( String )
@@ -34,6 +34,7 @@ import Text.Show         ( Show )
 
 -- base-unicode-symbols ----------------
 
+import Data.Function.Unicode    ( (∘) )
 import Numeric.Natural.Unicode  ( ℕ )
 
 -- data-monotraversable ----------------
@@ -50,7 +51,7 @@ import Control.Lens.Iso  ( iso )
 ------------------------------------------------------------
 
 import FixedList  ( AsL4( l4 ), AsL5( l5 ), AsL6( l6 ), AsL8( l8 )
-                  , L4( L4 ), L5( L5 ), L6, L8( L8 ) )
+                  , L4( L4 ), L5( L5 ), L6, L8( L8 ), readL8 )
 
 --------------------------------------------------------------------------------
 
@@ -142,6 +143,11 @@ pattern Board r0 r1 r2 r3 r4 r5 r6 r7 = BoardT (L8 r0 r1 r2 r3 r4 r5 r6 r7)
 
 instance AsL8 Board where
   l8 = iso unBoardT BoardT
+
+{- | Convert a list of keyrows to a board, iff it's the right number of rows
+     (being 8: four left, four right (interleaved: l r l r l r l r, top-down. -}
+readBoard ∷ [KeyRow] → Maybe Board
+readBoard = fmap BoardT ∘ readL8
 
 ------------------------------------------------------------
 

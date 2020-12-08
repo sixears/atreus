@@ -4,16 +4,20 @@
 
 module FixedList
   ( AsL4( l4 ), AsL5( l5 ), AsL6( l6 ), AsL8( l8 )
-  , L4( L4 ), L5( L5 ), L6( L6 ), L8( L8 ) )
+  , L4( L4 ), L5( L5 ), L6( L6 ), L8( L8 )
+  , groupL6, l5map, readL8
+  )
 where
 
 -- base --------------------------------
 
 import Control.Applicative  ( Applicative( (<*>), pure ) )
+import Control.Monad        ( return )
 import Data.Foldable        ( Foldable( foldl', foldl1, foldr, foldr1
                                       , foldMap ) )
-import Data.Function        ( id )
+import Data.Function        ( ($), id )
 import Data.Functor         ( Functor( fmap ), (<$>) )
+import Data.Maybe           ( Maybe( Just, Nothing ) )
 import Data.Traversable     ( Traversable( traverse ) )
 
 -- base-unicode-symbols ----------------
@@ -30,8 +34,13 @@ import Data.MonoTraversable  ( Element
 
 -- lens --------------------------------
 
-import Control.Lens.Iso   ( Iso )
-import Control.Lens.Type  ( Simple )
+import Control.Lens.Getter  ( view )
+import Control.Lens.Iso     ( Iso, from )
+import Control.Lens.Type    ( Simple )
+
+-- mtl ---------------------------------
+
+import Control.Monad.Except  ( MonadError, throwError )
 
 --------------------------------------------------------------------------------
 
@@ -104,6 +113,9 @@ instance MonoFoldable (L5 α) where
   ofoldr1Ex  f           = foldr1 f ∘ otoList
   ofoldl1Ex' f           = foldl1 f ∘ otoList
 
+l5map ∷ (AsL5 α, AsL5 β) ⇒ (Element α → Element β) → α → β
+l5map f = ((view $ from l5) ∘ (fmap f ∘ view l5))
+
 ------------------------------------------------------------
 
 {- | A list of length 6. -}
@@ -141,6 +153,15 @@ instance MonoFoldable (L6 α) where
   ofoldr1Ex  f             = foldr1 f ∘ otoList
   ofoldl1Ex' f             = foldl1 f ∘ otoList
 
+----------------------------------------
+
+{- | Group things into 6s; throw a given error if a non-divisable-by-6 number
+     of things is given. -}
+groupL6 ∷ MonadError ε η ⇒ ([α] → ε) → [α] → η [L6 α]
+groupL6 _   []               = return []
+groupL6 err (a:b:c:d:e:f:xs) = (L6 a b c d e f :) <$> (groupL6 err xs)
+groupL6 err xs               = throwError $ err xs
+
 ------------------------------------------------------------
 
 {- | A list of length 8. -}
@@ -165,5 +186,9 @@ instance Functor L8 where
 
 instance Foldable L8 where
   foldr p x (L8 a b c d e f g h) = foldr p x [a,b,c,d,e,f,g,h]
+
+readL8 ∷ [α] → Maybe (L8 α)
+readL8 [x0,x1,x2,x3,x4,x5,x6,x7] = Just $ L8 x0 x1 x2 x3 x4 x5 x6 x7
+readL8 _                         = Nothing
 
 -- that's all, folks! ----------------------------------------------------------
