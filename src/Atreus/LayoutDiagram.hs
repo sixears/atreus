@@ -24,7 +24,7 @@ import Data.Aeson  ( eitherDecodeFileStrict' )
 -- base --------------------------------
 
 import Control.Applicative     ( Applicative( (<*>) ), ZipList( ZipList ) )
-import Control.Monad           ( (>>=), join, mapM, return, sequence )
+import Control.Monad           ( (>>), (>>=), join, mapM, return, sequence )
 import Control.Monad.IO.Class  ( MonadIO, liftIO )
 import Data.Bool               ( Bool( False ) )
 import Data.Either             ( Either( Left, Right ), either )
@@ -340,18 +340,51 @@ lrCols' b = do
 
 ------------------------------------------------------------
 
+err ∷ (MonadIO μ, Printable ε) ⇒ ε → μ β
+err e = liftIO $ hPutStrLn stderr (toString e) >> exitWith (ExitFailure 255)
+
+
+xx ∷ MonadReader (Fonts 𝔻) η ⇒ Board → η DiagramB
+xx b =  do
+  (l,r) ← lrCols' b
+  -- (l,r) ← lrCols filenames
+
+  let (L6 lt0 lt1 lt2 lt3 lt4 lt5) = l
+      (L6 rt0 rt1 rt2 rt3 rt4 rt5) = r
+
+  let lrot = -10@@deg
+      rrot =  10@@deg
+      place ks y rot = vsup 0.1 (reverse $ toList ks)
+                                                  # transform (translationY y)
+                                                  # transform (rotation rot)
+
+  return $ cat' (V2 1 0)
+                (with & catMethod .~ Distrib & sep .~ (1.2 ÷ cosA lrot))
+                [ place lt0 0      lrot
+                , place lt1 0      lrot
+                , place lt2 0      lrot
+                , place lt3 (-0.5) lrot
+                , place lt4 (-1.0) lrot
+                , place lt5 (-1.0) lrot
+                , place rt0 (-1.0) rrot
+                , place rt1 (-1.0) rrot
+                , place rt2 (-0.5) rrot
+                , place rt3 0      rrot
+                , place rt4 0      rrot
+                , place rt5 0      rrot
+                ]
+
+yy ∷ (MonadIO μ, MonadError AtreusLayoutE μ, MonadReader (Fonts 𝔻) μ) ⇒
+     [FilePath] → μ DiagramB
+yy fns = lrRows fns >>= xx
+
 atreus_layout ∷ IO DiagramB
 atreus_layout = do
-  fonts ← getFonts @𝔻
-  x ← runExceptT $ flip runReaderT fonts $ do
+  b ← runExceptT $ lrRows filenames
+  fonts ← getFonts -- @𝔻
+  x ∷ Either AtreusLayoutE DiagramB ← runExceptT $ flip runReaderT fonts $ do
+    -- (l,r) ← lrCols' _
     (l,r) ← lrCols filenames
-{-
-    (l,r) ← runExceptT (lrCols filenames) >>= \ case
-                                                Right r → return r
-                                                Left  e → liftIO $ do
-                                                  hPutStrLn stderr (toString e)
-                                                  exitWith (ExitFailure 255)
--}
 
     let (L6 lt0 lt1 lt2 lt3 lt4 lt5) = l
         (L6 rt0 rt1 rt2 rt3 rt4 rt5) = r
@@ -359,8 +392,8 @@ atreus_layout = do
     let lrot = -10@@deg
         rrot =  10@@deg
         place ks y rot = vsup 0.1 (reverse $ toList ks)
-                                                    # transform (translationY y)
-                                                    # transform (rotation rot)
+                                                  # transform (translationY y)
+                                                  # transform (rotation rot)
 
     return $ cat' (V2 1 0)
                   (with & catMethod .~ Distrib & sep .~ (1.2 ÷ cosA lrot))
@@ -378,12 +411,12 @@ atreus_layout = do
                   , place rt5 0      rrot
                   ]
 
-  case x of
+--  case x of
+  runExceptT (flip runReaderT fonts (yy filenames)) >>= \ case
     Right r → return r
-    Left  e → liftIO $ do
+    Left  e → err e {- liftIO $ do
       hPutStrLn stderr (toString e)
-      exitWith (ExitFailure 255)
---  return _
+      exitWith (ExitFailure 255) -}
 
 -- that's all, folks! ----------------------------------------------------------
 
