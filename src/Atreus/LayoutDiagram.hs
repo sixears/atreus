@@ -15,7 +15,7 @@ where
 
 --------------------------------------------------------------------------------
 
-import Prelude  ( Double, RealFloat, undefined )
+import Prelude  ( Double, RealFloat )
 
 -- aeson -------------------------------
 
@@ -24,12 +24,12 @@ import Data.Aeson  ( eitherDecodeFileStrict' )
 -- base --------------------------------
 
 import Control.Applicative     ( Applicative( (<*>) ), ZipList( ZipList ) )
-import Control.Monad           ( (>>), (>>=), join, mapM, return, sequence )
+import Control.Monad           ( (>>=), join, mapM, return, sequence )
 import Control.Monad.IO.Class  ( MonadIO, liftIO )
 import Data.Bool               ( Bool( False ) )
 import Data.Either             ( Either( Left, Right ), either )
 import Data.Foldable           ( all, length, toList )
-import Data.Function           ( ($), (&), flip )
+import Data.Function           ( ($), (&) )
 import Data.Functor            ( Functor( fmap ), (<$>) )
 import Data.List               ( repeat, reverse, take )
 import Data.Maybe              ( Maybe, maybe )
@@ -79,7 +79,8 @@ import Diagrams.Core.V          ( N, V )
 import Diagrams.Angle             ( (@@), deg, cosA, rotation )
 import Diagrams.Attributes        ( lw, none )
 import Diagrams.Combinators       ( CatMethod( Distrib ), cat', catMethod, sep )
-import Diagrams.TwoD.Align        ( alignBL, alignBR, alignTL, alignTR, centerXY )
+import Diagrams.TwoD.Align        ( alignBL, alignBR, alignTL, alignTR
+                                  , centerXY )
 import Diagrams.TwoD.Attributes   ( fc )
 import Diagrams.TwoD.Path         ( strokeP )
 import Diagrams.TwoD.Shapes       ( roundedRect )
@@ -184,6 +185,14 @@ box1 = roundedRect 1 1 0.05
 vsup ∷ (Floating (N δ), Juxtaposable δ, Monoid δ, HasOrigin δ, V δ ~ V2) ⇒
        N δ -> [δ] -> δ
 vsup s = cat' (V2 0 1) (def & sep .~ s)
+
+----------------------------------------
+
+{- | Like `hcat`, but separates by origin rather than envelope (see `Distrib`).
+ -}
+htac ∷ (Floating (N δ), Juxtaposable δ, Monoid δ, HasOrigin δ, V δ ~ V2) ⇒
+       N δ -> [δ] -> δ
+htac d = cat' (V2 1 0) (with & catMethod .~ Distrib & sep .~ d)
 
 ----------------------------------------
 
@@ -312,22 +321,9 @@ lrRows fns = do
 {- | Two (6-long) lists of (4-high) columns of keys, as diagrams; split into
      left & right.
  -}
-lrCols ∷ (MonadIO μ, MonadError AtreusLayoutE μ, MonadReader (Fonts 𝔻) μ) ⇒
-         [FilePath] → μ (L6 (L4 DiagramB),L6 (L4 DiagramB))
-lrCols fns = do
-  -- each of l0,r0,…,r3 is ∷ L6 KeyLabels
-  L8 l0 r0 l1 r1 l2 r2 l3 r3 ← fmap (view l6) <$> view l8 <$> lrRows fns
-
-  let l ∷ L6 KeyCol = KeyCol <$> l0 <*> l1 <*> l2 <*> l3
-      r ∷ L6 KeyCol = KeyCol <$> r0 <*> r1 <*> r2 <*> r3
-
-  l' ← sequence $ fmap (mapM key ∘ view l4) l
-  r' ← sequence $ fmap (mapM key ∘ view l4) r
-  return (l',r')
-
-lrCols' ∷ (MonadReader (Fonts 𝔻) η) ⇒
+lrCols ∷ (MonadReader (Fonts 𝔻) η) ⇒
           Board → η (L6 (L4 DiagramB),L6 (L4 DiagramB))
-lrCols' b = do
+lrCols b = do
   -- each of l0,r0,…,r3 is ∷ L6 KeyLabels
   let L8 l0 r0 l1 r1 l2 r2 l3 r3 = view l6 <$> view l8 b
 
@@ -340,14 +336,9 @@ lrCols' b = do
 
 ------------------------------------------------------------
 
-err ∷ (MonadIO μ, Printable ε) ⇒ ε → μ β
-err e = liftIO $ hPutStrLn stderr (toString e) >> exitWith (ExitFailure 255)
-
-
-xx ∷ MonadReader (Fonts 𝔻) η ⇒ Board → η DiagramB
-xx b =  do
-  (l,r) ← lrCols' b
-  -- (l,r) ← lrCols filenames
+makeLayout ∷ MonadReader (Fonts 𝔻) η ⇒ Board → η DiagramB
+makeLayout b =  do
+  (l,r) ← lrCols b
 
   let (L6 lt0 lt1 lt2 lt3 lt4 lt5) = l
       (L6 rt0 rt1 rt2 rt3 rt4 rt5) = r
@@ -358,65 +349,31 @@ xx b =  do
                                                   # transform (translationY y)
                                                   # transform (rotation rot)
 
-  return $ cat' (V2 1 0)
-                (with & catMethod .~ Distrib & sep .~ (1.2 ÷ cosA lrot))
-                [ place lt0 0      lrot
-                , place lt1 0      lrot
-                , place lt2 0      lrot
-                , place lt3 (-0.5) lrot
-                , place lt4 (-1.0) lrot
-                , place lt5 (-1.0) lrot
-                , place rt0 (-1.0) rrot
-                , place rt1 (-1.0) rrot
-                , place rt2 (-0.5) rrot
-                , place rt3 0      rrot
-                , place rt4 0      rrot
-                , place rt5 0      rrot
-                ]
+  return $ htac (1.2 ÷ cosA lrot)
+                (htac 0.5 [[ place lt0 0      lrot
+                           , place lt1 0      lrot
+                           , place lt2 0      lrot
+                           , place lt3 (-0.5) lrot
+                           , place lt4 (-1.0) lrot
+                           , place lt5 (-1.0) lrot
+                           ]
+                          ,[ place rt0 (-1.0) rrot
+                           , place rt1 (-1.0) rrot
+                           , place rt2 (-0.5) rrot
+                           , place rt3 0      rrot
+                           , place rt4 0      rrot
+                           , place rt5 0      rrot
+                           ]
+                          ])
 
-yy ∷ (MonadIO μ, MonadError AtreusLayoutE μ, MonadReader (Fonts 𝔻) μ) ⇒
-     [FilePath] → μ DiagramB
-yy fns = lrRows fns >>= xx
+atreus_layout ∷ [FilePath] → IO DiagramB
+atreus_layout fns = do
+  fonts ← getFonts
 
-atreus_layout ∷ IO DiagramB
-atreus_layout = do
-  b ← runExceptT $ lrRows filenames
-  fonts ← getFonts -- @𝔻
-  x ∷ Either AtreusLayoutE DiagramB ← runExceptT $ flip runReaderT fonts $ do
-    -- (l,r) ← lrCols' _
-    (l,r) ← lrCols filenames
-
-    let (L6 lt0 lt1 lt2 lt3 lt4 lt5) = l
-        (L6 rt0 rt1 rt2 rt3 rt4 rt5) = r
-
-    let lrot = -10@@deg
-        rrot =  10@@deg
-        place ks y rot = vsup 0.1 (reverse $ toList ks)
-                                                  # transform (translationY y)
-                                                  # transform (rotation rot)
-
-    return $ cat' (V2 1 0)
-                  (with & catMethod .~ Distrib & sep .~ (1.2 ÷ cosA lrot))
-                  [ place lt0 0      lrot
-                  , place lt1 0      lrot
-                  , place lt2 0      lrot
-                  , place lt3 (-0.5) lrot
-                  , place lt4 (-1.0) lrot
-                  , place lt5 (-1.0) lrot
-                  , place rt0 (-1.0) rrot
-                  , place rt1 (-1.0) rrot
-                  , place rt2 (-0.5) rrot
-                  , place rt3 0      rrot
-                  , place rt4 0      rrot
-                  , place rt5 0      rrot
-                  ]
-
---  case x of
-  runExceptT (flip runReaderT fonts (yy filenames)) >>= \ case
+  runExceptT (runReaderT (lrRows fns >>= makeLayout) fonts) >>= \ case
     Right r → return r
-    Left  e → err e {- liftIO $ do
-      hPutStrLn stderr (toString e)
-      exitWith (ExitFailure 255) -}
+    Left  e → do hPutStrLn stderr (toString e)
+                 exitWith (ExitFailure 255)
 
 -- that's all, folks! ----------------------------------------------------------
 
