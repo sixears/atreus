@@ -13,7 +13,7 @@ module Atreus.Types
   , KeyColT( KeyCol ), KeyCol
   , KeyLabelsT( KeyLabels ), KeyLabels
   , KeyRow( KeyRow )
-  , atreusLayerEmpty, atreusLayerEmptyKey, readBoard
+  , atreusLayerEmpty, atreusLayerEmptyKey, fullLabel, readBoard
   )
 where
 
@@ -26,7 +26,7 @@ import Data.Aeson  ( FromJSON )
 import Data.Function     ( ($) )
 import Data.Functor      ( (<$>), fmap )
 import Data.List         ( replicate )
-import Data.Maybe        ( Maybe( Just, Nothing ) )
+import Data.Maybe        ( Maybe( Just, Nothing ), maybe )
 import Data.String       ( String )
 import Data.Traversable  ( traverse )
 import GHC.Generics      ( Generic )
@@ -35,6 +35,7 @@ import Text.Show         ( Show )
 -- base-unicode-symbols ----------------
 
 import Data.Function.Unicode    ( (∘) )
+import Data.Monoid.Unicode      ( (⊕) )
 import Numeric.Natural.Unicode  ( ℕ )
 
 -- data-monotraversable ----------------
@@ -44,7 +45,7 @@ import Data.MonoTraversable  ( Element, MonoFoldable, MonoFunctor
 
 -- lens --------------------------------
 
-import Control.Lens.Iso  ( iso )
+import Control.Lens.Iso     ( iso )
 
 ------------------------------------------------------------
 --                     local imports                      --
@@ -85,6 +86,9 @@ instance FromJSON AtreusKeySpec
 {- | A non-functioning-key, as represented in an atreus layer -}
 atreusLayerEmptyKey ∷ AtreusKeySpec
 atreusLayerEmptyKey = AtreusKeySpec 65535 "" (Just "Transparent") Nothing
+
+fullLabel ∷ AtreusKeySpec → 𝕊
+fullLabel k = maybe "" (⊕ " ") (extraLabel k) ⊕ label k
 
 ------------------------------------------------------------
 

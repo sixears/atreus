@@ -13,9 +13,11 @@ module Atreus.LayoutDiagram
   ( atreus_layout )
 where
 
+import Debug.Trace  ( trace, traceShow )
+
 --------------------------------------------------------------------------------
 
-import Prelude  ( Double, RealFloat )
+import Prelude  ( Double, RealFloat, (*) )
 
 -- aeson -------------------------------
 
@@ -31,10 +33,10 @@ import Data.Either             ( Either( Left, Right ), either )
 import Data.Foldable           ( all, length, toList )
 import Data.Function           ( ($), (&) )
 import Data.Functor            ( Functor( fmap ), (<$>) )
-import Data.List               ( repeat, reverse, take )
-import Data.Maybe              ( Maybe, maybe )
+import Data.List               ( lookup, repeat, reverse, take )
+import Data.Maybe              ( Maybe, fromMaybe, maybe )
 import Data.Monoid             ( Monoid, mconcat, mempty )
-import Data.Ord                ( (>) )
+import Data.Ord                ( (<), (>) )
 import Data.String             ( String )
 import GHC.Float               ( Floating )
 import System.Exit             ( ExitCode( ExitFailure ), exitWith )
@@ -84,6 +86,7 @@ import Diagrams.TwoD.Align        ( alignBL, alignBR, alignTL, alignTR
 import Diagrams.TwoD.Attributes   ( fc )
 import Diagrams.TwoD.Path         ( strokeP )
 import Diagrams.TwoD.Shapes       ( roundedRect )
+import Diagrams.TwoD.Size         ( width )
 import Diagrams.TwoD.Transform    ( translationY )
 import Diagrams.TwoD.Types        ( V2( V2 ) )
 import Diagrams.Util              ( (#), with )
@@ -128,7 +131,7 @@ import Atreus.Types  ( AtreusBoardSpecT( AtreusBoardSpec ), AtreusBoardSpec
                      , KeyColT( KeyCol ), KeyCol
                      , KeyRow( KeyRow )
                      , KeyLabelsT( KeyLabels ), KeyLabels
-                     , atreusLayerEmpty, readBoard
+                     , atreusLayerEmpty, fullLabel, readBoard
                      )
 import FixedList     ( AsL4( l4 ), AsL6( l6 ), AsL8( l8 ), L4, L6( L6 )
                      , L8( L8 ), groupL6, l5map )
@@ -208,20 +211,43 @@ topts m h w = do
 
 ----------------------------------------
 
-{- | Create a text diagram of given height (using the `SF.lin` font). -}
-text ∷ MonadReader (Fonts 𝔻) η ⇒ 𝔻 → 𝕊 → η DiagramB
-text h t = do
-  o ← topts INSIDE_H h 1 -- the width is irrelevant with INSIDE_H
-  return $ strokeP (textSVG' o t) # lw none
-
+{- | Create a text diagram of given height and maximum width (using the `SF.lin`
+     font).  The height will be scaled down if using the requested height would
+     cause the width to be exceeded.
+ -}
+text ∷ MonadReader (Fonts 𝔻) η ⇒ 𝔻 → 𝔻 → 𝕊 → η DiagramB
+text h w t = do
+  o ∷ TextOpts 𝔻 ← topts INSIDE_H h 1 -- the width is irrelevant with INSIDE_H
+  let dia ∷ DiagramB = strokeP (textSVG' o t) # lw none
+--  return $ traceShow ("dia width: ", width dia, " " ⊕ t) $ strokeP (textSVG' o t) # lw none
+  if w > width dia
+  then return $ strokeP (textSVG' o t) # lw none
+  else do o' ← traceShow ("using: " ⊕ show (h * w ÷ width dia) ⊕ " " ⊕ t) $ topts INSIDE_H (h * w ÷ width dia) 1
+          let dia' = strokeP (textSVG' o' t) # lw none
+          return $ traceShow ("now: " ⊕ show (h * w ÷ width dia') ⊕ " " ⊕ t) $ dia' -- strokeP (textSVG' o' t) # lw none
+  
 ----------------------------------------
 
+replacements = [ ("ShiftTo 1", "①")
+               , ("ShiftTo 2", "②")
+               , ("ShiftTo 3", "③")
+               , ("ShiftTo 4", "④")
+               , ("ShiftTo 5", "⑤")
+               , ("ShiftTo 6", "⑥")
+               , ("ShiftTo 7", "⑦")
+               , ("ShiftTo 8", "⑧")
+               , ("ShiftTo 9", "⑨")
+               , ("ShiftTo 10", "⑩")
+               , ("Macro #1", "❶")
+               ]
+-- ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩ ⑪ ⑫ ⑬ ⑭ ⑮ ⑯ ⑰ ⑱ ⑲ ⑳
+-- ❶ ❷ ❸ ❹ ❺ ❻ ❼ ❽ ❾ ❿ ⓫ ⓬ ⓭ ⓮ ⓯ ⓰ ⓱ ⓲ ⓳ ⓴ 
 {- | Create a text diagram of given height (using the `SF.lin` font);
      with given height, colour, alignment; and position. -}
 text' ∷ MonadReader (Fonts 𝔻) η ⇒
-      𝔻 → 𝕊 → Colour 𝔻 → 𝔻 → 𝔻 → (DiagramB → DiagramB) → η DiagramB
-text' h  t c x y a = do
-  t' ← text h t
+      𝔻 → 𝔻 → 𝕊 → Colour 𝔻 → 𝔻 → 𝔻 → (DiagramB → DiagramB) → η DiagramB
+text' h w t c x y a = do
+  t' ∷ DiagramB ← text h w (t `fromMaybe` (t `lookup` replacements))
   return (moveOriginBy (V2 x y) $ t' # fc c # a)
 
 ----------------------------------------
@@ -280,11 +306,11 @@ key k@(KeyLabels c tl tr bl br) = do
       kblank "Blocked" = ""
       kblank x         = x
       isNull x = all (\ s → "" ≡ kblank s) (otoList x)
-  t0 ← text' 0.5  (kblank c)  grey    0       0     centerXY
-  t1 ← text' 0.35 (kblank tr) red   (-0.45) (-0.45) alignTR
-  t2 ← text' 0.35 (kblank br) blue  (-0.45)   0.45  alignBR
-  t3 ← text' 0.35 (kblank tl) green   0.45  (-0.45) alignTL
-  t4 ← text' 0.35 (kblank bl) yellow  0.45    0.45  alignBL
+  t0 ← text' 0.5  0.4 (kblank c)  grey    0       0     centerXY
+  t1 ← text' 0.35 0.4 (kblank tr) red   (-0.45) (-0.45) alignTR
+  t2 ← text' 0.35 0.4 (kblank br) blue  (-0.45)   0.45  alignBR
+  t3 ← text' 0.35 0.4 (kblank tl) green   0.45  (-0.45) alignTL
+  t4 ← text' 0.35 0.4 (kblank bl) yellow  0.45    0.45  alignBL
 
   return $ if isNull k
            then mempty
@@ -311,7 +337,7 @@ group6Keys = join ∘ fmap (groupL6 AtreusWrongKeyCount) ∘ board
 lrRows ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ Board
 lrRows fns = do
   keyspecss ∷ [L6 AtreusKeySpecs] ← group6Keys fns
-  let keylabelss ∷ [L6 KeyLabels] = l5map label <$$> keyspecss
+  let keylabelss ∷ [L6 KeyLabels] = l5map fullLabel <$$> keyspecss
       maybeE ∷ MonadError AtreusLayoutE η ⇒ [L6 KeyLabels] → 𝕄 α → η α
       maybeE ls = maybe (throwError $ AtreusWrongRowCount ls) return
   maybeE keylabelss $ readBoard (KeyRow <$> keylabelss)
