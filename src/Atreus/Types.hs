@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -98,7 +99,7 @@ newtype AtreusKeySpecsT =
   deriving MonoFunctor
 type instance Element AtreusKeySpecsT = AtreusKeySpec
 type AtreusKeySpecs = AtreusKeySpecsT
-instance AsL5 AtreusKeySpecs where
+instance AsL5 AtreusKeySpecsT where
   l5 = iso unAtreusKeySpecsT AtreusKeySpecsT
 
 pattern AtreusKeySpecs ∷ AtreusKeySpec → AtreusKeySpec → AtreusKeySpec
@@ -145,7 +146,7 @@ pattern Board ∷ KeyRow → KeyRow → KeyRow → KeyRow → KeyRow → KeyRow 
 pattern Board r0 r1 r2 r3 r4 r5 r6 r7 = BoardT (L8 r0 r1 r2 r3 r4 r5 r6 r7)
 {-# COMPLETE Board #-}
 
-instance AsL8 Board where
+instance AsL8 BoardT where
   l8 = iso unBoardT BoardT
 
 {- | Convert a list of keyrows to a board, iff it's the right number of rows
@@ -162,7 +163,7 @@ type KeyCol = KeyColT
 
 type instance Element KeyCol = KeyLabels
 
-instance MonoTraversable KeyCol where
+instance MonoTraversable KeyColT where
   otraverse f (KeyColT ls) = KeyColT <$> traverse f ls
   
 pattern KeyCol ∷ KeyLabels → KeyLabels → KeyLabels → KeyLabels → KeyCol

@@ -76,7 +76,8 @@ executable atreus
   ghc-options:        -O2 -W -Wall -fhelpful-errors
   hs-source-dirs:     bin
   main-is:            atreus.hs
-  build-depends:      base, base-unicode-symbols, diagrams-svg
+  build-depends:      base, base-unicode-symbols, diagrams-lib, diagrams-svg
+                    , optparse-applicative
 
                     , atreus
   default-extensions: NoImplicitPrelude

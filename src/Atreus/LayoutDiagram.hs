@@ -228,7 +228,8 @@ text h w t = do
   
 ----------------------------------------
 
-replacements = [ ("ShiftTo 1", "①")
+replacements = [ ("ShiftTo 0", "⓪")
+               , ("ShiftTo 1", "①")
                , ("ShiftTo 2", "②")
                , ("ShiftTo 3", "③")
                , ("ShiftTo 4", "④")
@@ -238,10 +239,11 @@ replacements = [ ("ShiftTo 1", "①")
                , ("ShiftTo 8", "⑧")
                , ("ShiftTo 9", "⑨")
                , ("ShiftTo 10", "⑩")
-               , ("Macro #1", "❶")
+               , ("MoveTo 0", "⓿")
                ]
--- ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩ ⑪ ⑫ ⑬ ⑭ ⑮ ⑯ ⑰ ⑱ ⑲ ⑳
--- ❶ ❷ ❸ ❹ ❺ ❻ ❼ ❽ ❾ ❿ ⓫ ⓬ ⓭ ⓮ ⓯ ⓰ ⓱ ⓲ ⓳ ⓴ 
+-- ⓪ ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩ ⑪ ⑫ ⑬ ⑭ ⑮ ⑯ ⑰ ⑱ ⑲ ⑳
+-- ⓿ ❶ ❷ ❸ ❹ ❺ ❻ ❼ ❽ ❾ ❿ ⓫ ⓬ ⓭ ⓮ ⓯ ⓰ ⓱ ⓲ ⓳ ⓴ 
+
 {- | Create a text diagram of given height (using the `SF.lin` font);
      with given height, colour, alignment; and position. -}
 text' ∷ MonadReader (Fonts 𝔻) η ⇒
