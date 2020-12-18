@@ -13,8 +13,6 @@ module Atreus.LayoutDiagram
   ( atreus_layout )
 where
 
-import Debug.Trace  ( trace, traceShow )
-
 --------------------------------------------------------------------------------
 
 import Prelude  ( Double, RealFloat, (*) )
@@ -36,7 +34,7 @@ import Data.Functor            ( Functor( fmap ), (<$>) )
 import Data.List               ( lookup, repeat, reverse, take )
 import Data.Maybe              ( Maybe, fromMaybe, maybe )
 import Data.Monoid             ( Monoid, mconcat, mempty )
-import Data.Ord                ( (<), (>) )
+import Data.Ord                ( (>) )
 import Data.String             ( String )
 import GHC.Float               ( Floating )
 import System.Exit             ( ExitCode( ExitFailure ), exitWith )
@@ -125,7 +123,6 @@ import qualified Text.Printer  as  P
 
 import Atreus.Types  ( AtreusBoardSpecT( AtreusBoardSpec ), AtreusBoardSpec
                      , AtreusKeySpecsT( AtreusKeySpecs )
-                     , AtreusKeySpec( label )
                      , AtreusKeySpecs
                      , AtreusLayerSpec, Board
                      , KeyColT( KeyCol ), KeyCol
@@ -219,15 +216,15 @@ text ∷ MonadReader (Fonts 𝔻) η ⇒ 𝔻 → 𝔻 → 𝕊 → η DiagramB
 text h w t = do
   o ∷ TextOpts 𝔻 ← topts INSIDE_H h 1 -- the width is irrelevant with INSIDE_H
   let dia ∷ DiagramB = strokeP (textSVG' o t) # lw none
---  return $ traceShow ("dia width: ", width dia, " " ⊕ t) $ strokeP (textSVG' o t) # lw none
   if w > width dia
   then return $ strokeP (textSVG' o t) # lw none
-  else do o' ← traceShow ("using: " ⊕ show (h * w ÷ width dia) ⊕ " " ⊕ t) $ topts INSIDE_H (h * w ÷ width dia) 1
+  else do o' ← topts INSIDE_H (h * w ÷ width dia) 1
           let dia' = strokeP (textSVG' o' t) # lw none
-          return $ traceShow ("now: " ⊕ show (h * w ÷ width dia') ⊕ " " ⊕ t) $ dia' -- strokeP (textSVG' o' t) # lw none
+          return dia'
   
 ----------------------------------------
 
+replacements ∷ [(𝕊,𝕊)]
 replacements = [ ("ShiftTo 0", "⓪")
                , ("ShiftTo 1", "①")
                , ("ShiftTo 2", "②")
@@ -404,7 +401,3 @@ atreus_layout fns = do
                  exitWith (ExitFailure 255)
 
 -- that's all, folks! ----------------------------------------------------------
-
-{- | standard file names -}
-filenames ∷ [FilePath]
-filenames = fmap ("/home/martyn/rc/atreus/default-layout/layer" ⊕) ["0","1","2"]
