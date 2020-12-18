@@ -9,4 +9,4 @@ $(atreus): bin/atreus.hs src/Atreus/LayoutDiagram.hs atreus.cabal
 	nabal v2-build
 
 atreus.svg: $(atreus)
-	$(atreus) -o $@ -w 400
+	$(atreus) $(wildcard ~/rc/atreus/default-layout/layer*) -o $@ -w 400
