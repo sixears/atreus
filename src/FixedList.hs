@@ -114,7 +114,7 @@ instance MonoFoldable (L5 α) where
   ofoldl1Ex' f           = foldl1 f ∘ otoList
 
 l5map ∷ (AsL5 α, AsL5 β) ⇒ (Element α → Element β) → α → β
-l5map f = ((view $ from l5) ∘ (fmap f ∘ view l5))
+l5map f = view (from l5) ∘ (fmap f ∘ view l5)
 
 ------------------------------------------------------------
 
@@ -159,7 +159,7 @@ instance MonoFoldable (L6 α) where
      of things is given. -}
 groupL6 ∷ MonadError ε η ⇒ ([α] → ε) → [α] → η [L6 α]
 groupL6 _   []               = return []
-groupL6 err (a:b:c:d:e:f:xs) = (L6 a b c d e f :) <$> (groupL6 err xs)
+groupL6 err (a:b:c:d:e:f:xs) = (L6 a b c d e f :) <$> groupL6 err xs
 groupL6 err xs               = throwError $ err xs
 
 ------------------------------------------------------------

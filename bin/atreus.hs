@@ -25,9 +25,9 @@ import Diagrams.Backend.SVG  ( renderPretty )
 
 -- optparse-applicative ----------------
 
-import Options.Applicative.Builder  ( auto, fullDesc, info, long, metavar
-                                    , option, progDesc, short, strArgument
-                                    , strOption, value
+import Options.Applicative.Builder  ( auto, flag, fullDesc, help, info, long
+                                    , metavar, option, progDesc, short
+                                    , strArgument, strOption, value
                                     )
 import Options.Applicative.Extra    ( execParser, helper )
 import Options.Applicative.Types    ( Parser, ParserInfo )
@@ -36,20 +36,28 @@ import Options.Applicative.Types    ( Parser, ParserInfo )
 --                     local imports                      --
 ------------------------------------------------------------
 
-import Atreus.LayoutDiagram  ( atreus_layout )
+import Atreus.LayoutDiagram  ( LayoutRemap( REMAP_NONE, REMAP_DVORAK )
+                             , atreus_layout )
 
 --------------------------------------------------------------------------------
 
 data Options = Options { layerFns ∷ [FilePath]
                        , outputFn ∷ FilePath
                        , width    ∷ ℕ
+                       , remap    ∷ LayoutRemap
                        }
 
 parseOpts ∷ Parser Options
-parseOpts = Options <$> some (strArgument $ metavar "LAYER-FILE+")
-                    <*> strOption (short 'o' ⊕ long "output"
-                                             ⊕ metavar "OUTPUT-FILE")
-                    <*> option auto (short 'w' ⊕ value 400)
+parseOpts =
+  let
+    dvorak_help = help "remap to dvorak layout"
+  in
+    Options <$> some (strArgument $ metavar "LAYER-FILE+")
+            <*> strOption (short 'o' ⊕ long "output"
+                                     ⊕ metavar "OUTPUT-FILE")
+            <*> option auto (short 'w' ⊕ value 400)
+            <*> flag REMAP_NONE REMAP_DVORAK (short 'D' ⊕ long "dvorak"
+                                                        ⊕ dvorak_help)
 
 main ∷ IO ()
 main = do
@@ -57,7 +65,7 @@ main = do
       parser ∷ ParserInfo Options
       parser = info (parseOpts <**> helper) (fullDesc ⊕ prog_desc)
   opts ← execParser parser
-  dia ← atreus_layout (layerFns opts)
+  dia ← atreus_layout (layerFns opts) (remap opts)
   renderPretty (outputFn opts) (mkWidth (fromIntegral $ width opts)) dia
 
 -- that's all, folks! ----------------------------------------------------------

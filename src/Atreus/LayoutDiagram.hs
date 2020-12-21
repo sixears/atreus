@@ -5,12 +5,11 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE NoMonomorphismRestriction  #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UnicodeSyntax              #-}
 
 module Atreus.LayoutDiagram
-  ( atreus_layout )
+  ( LayoutRemap(..), atreus_layout )
 where
 
 --------------------------------------------------------------------------------
@@ -140,6 +139,13 @@ type 𝕄 = Maybe
 type 𝕊 = String
 
 type DiagramB = Diagram B
+{- | Map of potential label replacements -}
+type Replacements = [(𝕊,𝕊)]
+
+------------------------------------------------------------
+
+{- | Possible keyboard remappings -}
+data LayoutRemap = REMAP_NONE | REMAP_DVORAK
 
 ------------------------------------------------------------
 
@@ -164,7 +170,7 @@ instance Printable AtreusLayoutE where
 
 ------------------------------------------------------------
 
-data Fonts ν = Fonts { lin ∷ PreparedFont ν }
+newtype Fonts ν = Fonts { lin ∷ PreparedFont ν }
 
 {- | Read in a Fonts datum -}
 getFonts ∷ (Read ν, RealFloat ν) ⇒ IO (Fonts ν)
@@ -224,29 +230,93 @@ text h w t = do
   
 ----------------------------------------
 
-replacements ∷ [(𝕊,𝕊)]
-replacements = [ ("ShiftTo 0", "⓪")
-               , ("ShiftTo 1", "①")
-               , ("ShiftTo 2", "②")
-               , ("ShiftTo 3", "③")
-               , ("ShiftTo 4", "④")
-               , ("ShiftTo 5", "⑤")
-               , ("ShiftTo 6", "⑥")
-               , ("ShiftTo 7", "⑦")
-               , ("ShiftTo 8", "⑧")
-               , ("ShiftTo 9", "⑨")
-               , ("ShiftTo 10", "⑩")
-               , ("MoveTo 0", "⓿")
+stdReplacements ∷ Replacements
+stdReplacements = [ ("ShiftTo 0" , "⓪")
+                  , ("ShiftTo 1" , "①")
+                  , ("ShiftTo 2" , "②")
+                  , ("ShiftTo 3" , "③")
+                  , ("ShiftTo 4" , "④")
+                  , ("ShiftTo 5" , "⑤")
+                  , ("ShiftTo 6" , "⑥")
+                  , ("ShiftTo 7" , "⑦")
+                  , ("ShiftTo 8" , "⑧")
+                  , ("ShiftTo 9" , "⑨")
+                  , ("ShiftTo 10", "⑩")
+                  , ("ShiftTo 11", "⑪")
+                  , ("ShiftTo 12", "⑫")
+                  , ("ShiftTo 13", "⑬")
+                  , ("ShiftTo 14", "⑭")
+                  , ("ShiftTo 15", "⑮")
+                  , ("ShiftTo 16", "⑯")
+                  , ("ShiftTo 17", "⑰")
+                  , ("ShiftTo 18", "⑱")
+                  , ("ShiftTo 19", "⑲")
+                  , ("ShiftTo 20", "⑳")
+                  , ("MoveTo 0"  , "⓿")
+                  , ("MoveTo 1"  , "❶")
+                  , ("MoveTo 2"  , "❷")
+                  , ("MoveTo 3"  , "❸")
+                  , ("MoveTo 4"  , "❹")
+                  , ("MoveTo 5"  , "❺")
+                  , ("MoveTo 6"  , "❻")
+                  , ("MoveTo 7"  , "❼")
+                  , ("MoveTo 8"  , "❽")
+                  , ("MoveTo 9"  , "❾")
+                  , ("MoveTo 10" , "❿")
+                  , ("MoveTo 11" , "⓫")
+                  , ("MoveTo 12" , "⓬")
+                  , ("MoveTo 13" , "⓭")
+                  , ("MoveTo 14" , "⓮")
+                  , ("MoveTo 15" , "⓯")
+                  , ("MoveTo 16" , "⓰")
+                  , ("MoveTo 17" , "⓱")
+                  , ("MoveTo 18" , "⓲")
+                  , ("MoveTo 19" , "⓳")
+                  , ("MoveTo 20" , "⓴")
                ]
--- ⓪ ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩ ⑪ ⑫ ⑬ ⑭ ⑮ ⑯ ⑰ ⑱ ⑲ ⑳
--- ⓿ ❶ ❷ ❸ ❹ ❺ ❻ ❼ ❽ ❾ ❿ ⓫ ⓬ ⓭ ⓮ ⓯ ⓰ ⓱ ⓲ ⓳ ⓴ 
+ 
+layoutReplacements ∷ LayoutRemap → Replacements
+layoutReplacements REMAP_NONE = []
+layoutReplacements REMAP_DVORAK = [ ("Q", "'\"")
+                                  , ("W", ",<")
+                                  , ("E", ".>")
+                                  , ("R", "P")
+                                  , ("T", "Y")
+                                  , ("Y", "F")
+                                  , ("U", "G")
+                                  , ("I", "C")
+                                  , ("O", "R")
+                                  , ("P", "L")
+                                  , ("A", "A")
+                                  , ("S", "O")
+                                  , ("D", "E")
+                                  , ("F", "U")
+                                  , ("G", "I")
+                                  , ("H", "D")
+                                  , ("J", "T")
+                                  , ("K", "N")
+                                  , ("L", "S")
+                                  , (";", "-_")
+                                  , ("Z", ";:")
+                                  , ("X", "Q")
+                                  , ("C", "J")
+                                  , ("V", "K")
+                                  , ("B", "X")
+                                  , ("N", "B")
+                                  , ("M", "M")
+                                  , (",", "W")
+                                  , (".", "V")
+                                  , ("/", "Z")
+                                  ]
 
 {- | Create a text diagram of given height (using the `SF.lin` font);
      with given height, colour, alignment; and position. -}
 text' ∷ MonadReader (Fonts 𝔻) η ⇒
-      𝔻 → 𝔻 → 𝕊 → Colour 𝔻 → 𝔻 → 𝔻 → (DiagramB → DiagramB) → η DiagramB
-text' h w t c x y a = do
-  t' ∷ DiagramB ← text h w (t `fromMaybe` (t `lookup` replacements))
+        Replacements
+      → 𝔻 → 𝔻 → 𝕊 → Colour 𝔻 → 𝔻 → 𝔻 → (DiagramB → DiagramB)
+      → η DiagramB
+text' repls h w t c x y a = do
+  t' ∷ DiagramB ← text h w (t `fromMaybe` (t `lookup` repls))
   return (moveOriginBy (V2 x y) $ t' # fc c # a)
 
 ----------------------------------------
@@ -298,18 +368,18 @@ board fns =
 
 {- | Create a diagram for a key with the given labels.  Return an empty diagram
      if all the labels are `Nothing` (as opposed to, say, the empty string). -}
-key ∷ MonadReader (Fonts 𝔻) μ ⇒ KeyLabels → μ DiagramB
-key k@(KeyLabels c tl tr bl br) = do
+key ∷ MonadReader (Fonts 𝔻) μ ⇒ Replacements → KeyLabels → μ DiagramB
+key repls k@(KeyLabels c tl tr bl br) = do
   let -- kblank converts texts that should have no text - i.e., Blocked labels
       -- and empty labels - to empty.
       kblank "Blocked" = ""
       kblank x         = x
       isNull x = all (\ s → "" ≡ kblank s) (otoList x)
-  t0 ← text' 0.5  0.4 (kblank c)  grey    0       0     centerXY
-  t1 ← text' 0.35 0.4 (kblank tr) red   (-0.45) (-0.45) alignTR
-  t2 ← text' 0.35 0.4 (kblank br) blue  (-0.45)   0.45  alignBR
-  t3 ← text' 0.35 0.4 (kblank tl) green   0.45  (-0.45) alignTL
-  t4 ← text' 0.35 0.4 (kblank bl) yellow  0.45    0.45  alignBL
+  t0 ← text' repls 0.5  0.4 (kblank c)  grey    0       0     centerXY
+  t1 ← text' repls 0.35 0.4 (kblank tr) red   (-0.45) (-0.45) alignTR
+  t2 ← text' repls 0.35 0.4 (kblank br) blue  (-0.45)   0.45  alignBR
+  t3 ← text' repls 0.35 0.4 (kblank tl) green   0.45  (-0.45) alignTL
+  t4 ← text' repls 0.35 0.4 (kblank bl) yellow  0.45    0.45  alignBL
 
   return $ if isNull k
            then mempty
@@ -347,23 +417,23 @@ lrRows fns = do
      left & right.
  -}
 lrCols ∷ (MonadReader (Fonts 𝔻) η) ⇒
-          Board → η (L6 (L4 DiagramB),L6 (L4 DiagramB))
-lrCols b = do
+          Replacements → Board → η (L6 (L4 DiagramB),L6 (L4 DiagramB))
+lrCols repls b = do
   -- each of l0,r0,…,r3 is ∷ L6 KeyLabels
   let L8 l0 r0 l1 r1 l2 r2 l3 r3 = view l6 <$> view l8 b
 
   let l ∷ L6 KeyCol = KeyCol <$> l0 <*> l1 <*> l2 <*> l3
       r ∷ L6 KeyCol = KeyCol <$> r0 <*> r1 <*> r2 <*> r3
 
-  l' ← sequence $ fmap (mapM key ∘ view l4) l
-  r' ← sequence $ fmap (mapM key ∘ view l4) r
+  l' ← sequence $ fmap (mapM (key repls) ∘ view l4) l
+  r' ← sequence $ fmap (mapM (key repls) ∘ view l4) r
   return (l',r')
 
 ------------------------------------------------------------
 
-makeLayout ∷ MonadReader (Fonts 𝔻) η ⇒ Board → η DiagramB
-makeLayout b =  do
-  (l,r) ← lrCols b
+makeLayout ∷ MonadReader (Fonts 𝔻) η ⇒ Replacements → Board → η DiagramB
+makeLayout repls b =  do
+  (l,r) ← lrCols repls b
 
   let (L6 lt0 lt1 lt2 lt3 lt4 lt5) = l
       (L6 rt0 rt1 rt2 rt3 rt4 rt5) = r
@@ -391,11 +461,14 @@ makeLayout b =  do
                            ]
                           ])
 
-atreus_layout ∷ [FilePath] → IO DiagramB
-atreus_layout fns = do
+----------------------------------------
+
+atreus_layout ∷ [FilePath] → LayoutRemap → IO DiagramB
+atreus_layout fns remap = do
   fonts ← getFonts
 
-  runExceptT (runReaderT (lrRows fns >>= makeLayout) fonts) >>= \ case
+  let repls = layoutReplacements remap ⊕ stdReplacements
+  runExceptT (runReaderT (lrRows fns >>= makeLayout repls) fonts) >>= \ case
     Right r → return r
     Left  e → do hPutStrLn stderr (toString e)
                  exitWith (ExitFailure 255)
