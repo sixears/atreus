@@ -25,7 +25,6 @@ import Data.Aeson  ( eitherDecodeFileStrict' )
 import Control.Applicative     ( Applicative( (<*>) ), ZipList( ZipList ) )
 import Control.Monad           ( (>>=), join, mapM, return, sequence )
 import Control.Monad.IO.Class  ( MonadIO, liftIO )
-import Data.Bool               ( Bool( False ) )
 import Data.Either             ( Either( Left, Right ), either )
 import Data.Foldable           ( all, length, toList )
 import Data.Function           ( ($), (&) )
@@ -81,7 +80,6 @@ import Diagrams.Combinators       ( CatMethod( Distrib ), cat', catMethod, sep )
 import Diagrams.TwoD.Align        ( alignBL, alignBR, alignTL, alignTR
                                   , centerXY )
 import Diagrams.TwoD.Attributes   ( fc )
-import Diagrams.TwoD.Path         ( strokeP )
 import Diagrams.TwoD.Shapes       ( roundedRect )
 import Diagrams.TwoD.Size         ( width )
 import Diagrams.TwoD.Transform    ( translationY )
@@ -105,11 +103,8 @@ import Control.Monad.Reader  ( MonadReader, asks, runReaderT )
 -- SVGFonts ----------------------------
 
 import qualified  Graphics.SVGFonts  as  SF
-import Graphics.SVGFonts  ( Mode( INSIDE_H ), Spacing( KERN )
-                          , TextOpts( TextOpts, mode, spacing, textFont
-                                    , textHeight, textWidth, underline )
-                          , textSVG'
-                          )
+import Graphics.SVGFonts  ( TextOpts( textFont )
+                          , fit_height, set_envelope, svgText )
 import Graphics.SVGFonts.ReadFont  ( PreparedFont )
 
 -- text-printer ------------------------
@@ -206,11 +201,22 @@ htac d = cat' (V2 1 0) (with & catMethod .~ Distrib & sep .~ d)
      font, with the given sizing mode, height & width; using Kerning, and no
      underline.
  -}
+{-
 topts ∷ MonadReader (Fonts ν) η ⇒ Mode → ν → ν → η (TextOpts ν)
 topts m h w = do
   l ← asks lin
   return TextOpts { textFont = l, mode = m, spacing = KERN
                   , underline = False, textWidth = w, textHeight = h }
+-}
+
+textSVG ∷ MonadReader (Fonts 𝔻) η ⇒ 𝔻 → 𝕊 → η DiagramB
+textSVG h t = do
+  l ← asks lin
+  return $ t # svgText (def ∷ TextOpts 𝔻) { textFont = l }
+             # fit_height h
+             # set_envelope
+             # lw none
+             # centerXY
 
 ----------------------------------------
 
@@ -220,14 +226,18 @@ topts m h w = do
  -}
 text ∷ MonadReader (Fonts 𝔻) η ⇒ 𝔻 → 𝔻 → 𝕊 → η DiagramB
 text h w t = do
-  o ∷ TextOpts 𝔻 ← topts INSIDE_H h 1 -- the width is irrelevant with INSIDE_H
-  let dia ∷ DiagramB = strokeP (textSVG' o t) # lw none
+--  o ∷ TextOpts 𝔻 ← topts INSIDE_H h 1 -- the width is irrelevant with INSIDE_H
+--  let dia ∷ DiagramB = strokeP (textSVG' o t) # lw none
+  dia ∷ DiagramB ← textSVG h t
   if w > width dia
-  then return $ strokeP (textSVG' o t) # lw none
-  else do o' ← topts INSIDE_H (h * w ÷ width dia) 1
-          let dia' = strokeP (textSVG' o' t) # lw none
-          return dia'
-  
+--  then return $ strokeP (textSVG' o t) # lw none
+  then {- return $ -} textSVG h t
+  else do -- o' ← topts INSIDE_H (h * w ÷ width dia) 1
+          -- let dia' = strokeP (textSVG' o' t) # lw none
+          let dia' = textSVG (h * w ÷ width dia) t
+          {- return -}
+          dia'
+
 ----------------------------------------
 
 stdReplacements ∷ Replacements
@@ -274,7 +284,7 @@ stdReplacements = [ ("ShiftTo 0" , "⓪")
                   , ("MoveTo 19" , "⓳")
                   , ("MoveTo 20" , "⓴")
                ]
- 
+
 layoutReplacements ∷ LayoutRemap → Replacements
 layoutReplacements REMAP_NONE = []
 layoutReplacements REMAP_DVORAK = [ ("Q", "'\"")
@@ -298,7 +308,7 @@ layoutReplacements REMAP_DVORAK = [ ("Q", "'\"")
                                   , ("K", "T")
                                   , ("L", "N")
                                   , (";", "S")
-                                  
+
                                   , ("Z", ";:")
                                   , ("X", "Q")
                                   , ("C", "J")
@@ -315,6 +325,11 @@ layoutReplacements REMAP_DVORAK = [ ("Q", "'\"")
                                   , ("'", "-_")
                                   , ("-", "[{")
                                   , ("=", "]}")
+
+                                  -- these aren't real changes, but gives slightly
+                                  -- nicer output by showing both punctuations
+                                  , ("`", "`~")
+                                  , ("\\", "\\|")
                                   ]
 
 {- | Create a text diagram of given height (using the `SF.lin` font);
@@ -365,7 +380,7 @@ decodes fns = mapM decode fns >>= boardFromLayers
      are represented on all layers are returned. -}
 board ∷ (MonadIO μ, MonadError AtreusLayoutE μ) ⇒ [FilePath] → μ [AtreusKeySpecs]
 board fns =
-    (\ (AtreusBoardSpec layer0 layer1 layer2 layer3 layer4) → 
+    (\ (AtreusBoardSpec layer0 layer1 layer2 layer3 layer4) →
       toList $ AtreusKeySpecs <$> ZipList (otoList layer0)
                               <*> ZipList (otoList layer1)
                               <*> ZipList (otoList layer2)
